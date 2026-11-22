@@ -1,0 +1,71 @@
+{
+    "schema_version":  1,
+    "published_at":  "2026-11-22T15:24:15Z",
+    "tools":  [
+                  {
+                      "id":  "ffmpeg",
+                      "variant":  "default",
+                      "version":  "9.1",
+                      "url":  "https://github.com/GyanD/codexffmpeg/releases/download/9.1/ffmpeg-9.1-essentials_build.zip",
+                      "archive_kind":  "zip",
+                      "download_sha256":  "b9bbbb3acece000cbeec994f856649354e52c773807841e78908374b24d658fd",
+                      "executable_rel_path":  "ffmpeg-9.1-essentials_build/bin/ffmpeg.exe",
+                      "executable_sha256":  "ed8f66cb877087a96f5bbb40a2944f0e764f2ad8870d5cb647360d912e62bc07",
+                      "self_test_args":  [
+                                             "-version"
+                                         ]
+                  },
+                  {
+                      "id":  "yt_dlp",
+                      "variant":  "default",
+                      "version":  "2026.10.26",
+                      "url":  "https://github.com/yt-dlp/yt-dlp/releases/download/2026.10.26/yt-dlp.exe",
+                      "archive_kind":  "binary",
+                      "download_sha256":  "f5389d3698ecde4ef06f4e6b1ce0294fe9ac1396228c8990b8d3416d6d177a7d",
+                      "executable_rel_path":  "yt-dlp.exe",
+                      "executable_sha256":  "f5389d3698ecde4ef06f4e6b1ce0294fe9ac1396228c8990b8d3416d6d177a7d",
+                      "self_test_args":  [
+                                             "--version"
+                                         ]
+                  },
+                  {
+                      "id":  "twitch_downloader",
+                      "variant":  "default",
+                      "version":  "1.56.5",
+                      "url":  "https://github.com/lay295/TwitchDownloader/releases/download/1.56.5/TwitchDownloaderCLI-1.56.5-Windows-x64.zip",
+                      "archive_kind":  "zip",
+                      "download_sha256":  "8b1b0695f2b1b6bf0d2535fab4b84032951cded8cf4078dfdf4d58e391c813a0",
+                      "executable_rel_path":  "TwitchDownloaderCLI.exe",
+                      "executable_sha256":  "a4c855e0825bce18d7a47f7ba66bd0934557c45e8d763f4becb492186b4704de",
+                      "self_test_args":  [
+                                             "--version"
+                                         ]
+                  },
+                  {
+                      "id":  "whisper_cpp",
+                      "variant":  "cuda",
+                      "version":  "v1.9.2",
+                      "url":  "https://github.com/ggml-org/whisper.cpp/releases/download/v1.9.2/whisper-cublas-12.4.0-bin-x64.zip",
+                      "archive_kind":  "zip",
+                      "download_sha256":  "443110ddaad70d4290ab2e77179e31cf712035bbc4fad56bb4519a90c917b39c",
+                      "executable_rel_path":  "Release/whisper-cli.exe",
+                      "executable_sha256":  "92205834c7e2dfa35fac242fb438c285f70bcf942474f80f7dcf5fdac0d7a6dc",
+                      "self_test_args":  [
+                                             "--help"
+                                         ]
+                  },
+                  {
+                      "id":  "whisper_cpp",
+                      "variant":  "cpu",
+                      "version":  "v1.9.2",
+                      "url":  "https://github.com/ggml-org/whisper.cpp/releases/download/v1.9.2/whisper-bin-x64.zip",
+                      "archive_kind":  "zip",
+                      "download_sha256":  "49dcc16de826f20bd53d44f947a1ae49dfa81f86cad67a64d80820cb192d674a",
+                      "executable_rel_path":  "Release/whisper-cli.exe",
+                      "executable_sha256":  "95e3c0b0e778ad9499eb0125f97c1dcf437dd9eb4ea77050b043574f93c2631d",
+                      "self_test_args":  [
+                                             "--help"
+                                         ]
+                  }
+              ]
+}

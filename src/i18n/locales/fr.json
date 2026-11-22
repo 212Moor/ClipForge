@@ -1,0 +1,169 @@
+{
+  "app": {
+    "name": "ClipForge",
+    "tagline": "VOD Twitch vers clips 9:16",
+    "commandHint": "Commandes"
+  },
+  "window": {
+    "minimize": "Réduire",
+    "maximize": "Agrandir",
+    "restore": "Restaurer",
+    "close": "Fermer"
+  },
+  "nav": {
+    "label": "Navigation",
+    "home": "Accueil",
+    "newProject": "Nouveau projet",
+    "analysis": "Analyse",
+    "timeline": "Timeline",
+    "review": "Revue des clips",
+    "export": "File d'export",
+    "costs": "Coûts et tokens",
+    "settings": "Paramètres",
+    "onboarding": "Premier lancement",
+    "expandSidebar": "Étendre la navigation",
+    "collapseSidebar": "Réduire la navigation"
+  },
+  "theme": {
+    "label": "Apparence",
+    "dark": "Sombre",
+    "light": "Clair",
+    "system": "Système"
+  },
+  "language": {
+    "label": "Langue",
+    "fr": "Français",
+    "en": "English"
+  },
+  "commandPalette": {
+    "placeholder": "Rechercher un écran ou une action…",
+    "empty": "Aucune commande trouvée.",
+    "groupNavigation": "Navigation",
+    "groupPreferences": "Préférences",
+    "groupSystem": "Fenêtre",
+    "toggleSidebar": "Basculer la barre latérale",
+    "themeDark": "Passer au thème sombre",
+    "themeLight": "Passer au thème clair",
+    "themeSystem": "Suivre le thème Windows",
+    "langFr": "Langue : français",
+    "langEn": "Langue : anglais"
+  },
+  "screens": {
+    "home": {
+      "title": "Accueil",
+      "subtitle": "Point de départ des analyses de VOD et suivi de votre consommation de tokens.",
+      "emptyTitle": "Aucun projet pour le moment",
+      "emptyDesc": "Collez l'URL d'une rediffusion Twitch pour lancer une analyse. Cet écran s'active avec l'ingestion des VOD, prochaine phase du développement."
+    },
+    "newProject": {
+      "title": "Nouveau projet",
+      "subtitle": "Aperçu de la VOD, choix du mode Éco, Standard ou Qualité et estimation du coût.",
+      "emptyTitle": "La création de projet arrive avec l'ingestion",
+      "emptyDesc": "Installez d'abord les outils dans Premier lancement, puis enregistrez votre clé API Gemini dans Paramètres."
+    },
+    "analysis": {
+      "title": "Analyse",
+      "subtitle": "Signaux locaux puis tri éditorial Gemini, avec reprise après interruption.",
+      "emptyTitle": "Aucune analyse en cours",
+      "emptyDesc": "L'avancement en direct (audio, chat, signaux, Whisper, Gemini) s'affichera ici."
+    },
+    "timeline": {
+      "title": "Timeline",
+      "subtitle": "Forme d'onde, densité du chat, zones mutées et marqueurs de moments forts.",
+      "emptyTitle": "Aucune VOD analysée",
+      "emptyDesc": "La timeline s'affichera ici dès qu'une VOD aura été analysée."
+    },
+    "review": {
+      "title": "Revue des clips",
+      "subtitle": "Grille 9:16, validation au clavier et édition des sous-titres.",
+      "emptyTitle": "Aucun clip à relire",
+      "emptyDesc": "Les clips proposés apparaîtront ici après l'analyse d'une VOD."
+    },
+    "export": {
+      "title": "File d'export",
+      "subtitle": "Rendu 1080×1920, volume normalisé à −14 LUFS et export des légendes.",
+      "emptyTitle": "File d'export vide",
+      "emptyDesc": "Les clips validés seront rendus ici avec FFmpeg."
+    },
+    "costs": {
+      "title": "Coûts et tokens",
+      "subtitle": "Suivi par projet et par étage, hits de cache et plafond budgétaire.",
+      "emptyTitle": "Aucun appel Gemini enregistré",
+      "emptyDesc": "Les statistiques d'usage s'alimenteront dès le premier appel à l'API."
+    },
+    "onboarding": {
+      "title": "Premier lancement",
+      "subtitle": "Installation des outils FFmpeg, yt-dlp, TwitchDownloaderCLI et whisper.cpp, vérifiés par SHA-256."
+    },
+    "settings": {
+      "title": "Paramètres",
+      "subtitle": "Apparence, langue, clé API Gemini et diagnostic local.",
+      "appearanceCard": "Interface et préférences",
+      "appearanceDesc": "Enregistrées dans SQLite et appliquées au matériau de la fenêtre Windows.",
+      "diagnosticsCard": "Diagnostic local",
+      "diagnosticsDesc": "État du moteur Rust, de la base SQLite et du dossier de données.",
+      "version": "Version",
+      "repo": "Dépôt des mises à jour",
+      "vibrancy": "Matériau de la fenêtre",
+      "dataRoot": "Dossier de données",
+      "database": "Base SQLite",
+      "logs": "Journaux",
+      "migrations": "Migrations SQLite",
+      "savedToast": "Préférence enregistrée"
+    }
+  },
+  "actions": {
+    "openOnboarding": "Ouvrir Premier lancement",
+    "openSettings": "Ouvrir Paramètres"
+  },
+  "sidecars": {
+    "gpuTitle": "Accélération matérielle détectée",
+    "gpuNone": "Aucun GPU détecté, repli sur le processeur",
+    "whisperVariant": "Variante de whisper.cpp",
+    "recommended": "Recommandée",
+    "manifestEmbedded": "Manifeste embarqué",
+    "manifestRemote": "Manifeste distant signé Ed25519",
+    "checkRemote": "Vérifier le manifeste distant",
+    "installAll": "Tout installer",
+    "importOffline": "Importer depuis un dossier",
+    "install": "Installer",
+    "update": "Mettre à jour",
+    "retest": "Auto-test",
+    "statusReady": "Installé et vérifié",
+    "statusMissing": "Non installé",
+    "statusUpdate": "Mise à jour disponible",
+    "statusHashMissing": "Manifeste à synchroniser",
+    "continueToApp": "Continuer vers l'application",
+    "allReadyBanner": "Tous les outils sont installés et vérifiés par SHA-256.",
+    "missingBanner": "Installez les 4 outils ci-dessous (téléchargement reprenable ou import hors ligne) pour activer l'analyse locale.",
+    "offlineSuccess": "Import hors ligne terminé",
+    "hashHelp": "Exécutez scripts/sync-sidecar-manifest.ps1 pour renseigner les empreintes SHA-256 officielles, puis relancez l'application."
+  },
+  "gemini": {
+    "title": "API Gemini (Google AI Studio)",
+    "subtitle": "Stockée dans le Gestionnaire d'identifiants Windows, jamais dans SQLite ni dans les journaux.",
+    "proNoticeTitle": "Un abonnement Google AI Pro ne remplace pas une clé API",
+    "proNoticeBody": "L'abonnement Google AI Pro (application Gemini) ne donne pas accès à l'API développeur. Créez une clé dédiée dans Google AI Studio : palier gratuit (soumis aux conditions d'usage des données de Google) ou palier facturé à l'usage.",
+    "openAiStudio": "Ouvrir Google AI Studio",
+    "statusConfigured": "Clé enregistrée",
+    "statusMissing": "Non configurée",
+    "inputLabel": "Clé API Google AI Studio",
+    "inputPlaceholder": "Collez votre clé API AI Studio…",
+    "show": "Afficher la clé",
+    "hide": "Masquer la clé",
+    "saveKey": "Enregistrer",
+    "testKey": "Tester la clé",
+    "deleteKey": "Supprimer",
+    "refreshModels": "Actualiser la liste",
+    "modelsTitle": "Modèles disponibles (models.list)",
+    "modelsEmpty": "Testez ou enregistrez une clé API pour charger la liste réelle des modèles.",
+    "stageALabel": "Étage A : tri rapide (Flash-Lite recommandé)",
+    "stageBLabel": "Étage B : finition du top K (Flash recommandé)",
+    "selectPlaceholder": "Choisir un modèle…",
+    "recommendedSuffix": "recommandé",
+    "applyRecommended": "Appliquer les modèles recommandés",
+    "savedKeyToast": "Clé enregistrée dans le Gestionnaire d'identifiants Windows",
+    "deletedKeyToast": "Clé supprimée du Gestionnaire d'identifiants Windows",
+    "modelsSavedToast": "Sélection des modèles enregistrée"
+  }
+}

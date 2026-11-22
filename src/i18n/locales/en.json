@@ -1,0 +1,169 @@
+{
+  "app": {
+    "name": "ClipForge",
+    "tagline": "Twitch VOD to 9:16 clips",
+    "commandHint": "Commands"
+  },
+  "window": {
+    "minimize": "Minimize",
+    "maximize": "Maximize",
+    "restore": "Restore",
+    "close": "Close"
+  },
+  "nav": {
+    "label": "Navigation",
+    "home": "Home",
+    "newProject": "New project",
+    "analysis": "Analysis",
+    "timeline": "Timeline",
+    "review": "Clip review",
+    "export": "Export queue",
+    "costs": "Costs & tokens",
+    "settings": "Settings",
+    "onboarding": "First launch",
+    "expandSidebar": "Expand navigation",
+    "collapseSidebar": "Collapse navigation"
+  },
+  "theme": {
+    "label": "Appearance",
+    "dark": "Dark",
+    "light": "Light",
+    "system": "System"
+  },
+  "language": {
+    "label": "Language",
+    "fr": "Français",
+    "en": "English"
+  },
+  "commandPalette": {
+    "placeholder": "Search a screen or action…",
+    "empty": "No matching command.",
+    "groupNavigation": "Navigation",
+    "groupPreferences": "Preferences",
+    "groupSystem": "Window",
+    "toggleSidebar": "Toggle sidebar",
+    "themeDark": "Switch to dark theme",
+    "themeLight": "Switch to light theme",
+    "themeSystem": "Follow Windows theme",
+    "langFr": "Language: French",
+    "langEn": "Language: English"
+  },
+  "screens": {
+    "home": {
+      "title": "Home",
+      "subtitle": "Starting point for VOD analysis and your token usage at a glance.",
+      "emptyTitle": "No projects yet",
+      "emptyDesc": "Paste a Twitch VOD URL to start an analysis. This screen comes alive with VOD ingestion, the next development phase."
+    },
+    "newProject": {
+      "title": "New project",
+      "subtitle": "VOD preview, Eco / Standard / Quality mode and cost estimate.",
+      "emptyTitle": "Project creation arrives with ingestion",
+      "emptyDesc": "First install the tools in First launch, then save your Gemini API key in Settings."
+    },
+    "analysis": {
+      "title": "Analysis",
+      "subtitle": "Local signals followed by Gemini editorial triage, resumable after interruption.",
+      "emptyTitle": "No analysis running",
+      "emptyDesc": "Live progress (audio, chat, signals, Whisper, Gemini) will show up here."
+    },
+    "timeline": {
+      "title": "Timeline",
+      "subtitle": "Waveform, chat density, muted ranges and highlight markers.",
+      "emptyTitle": "No analyzed VOD",
+      "emptyDesc": "The timeline appears here as soon as a VOD has been analyzed."
+    },
+    "review": {
+      "title": "Clip review",
+      "subtitle": "9:16 grid, keyboard triage and subtitle editing.",
+      "emptyTitle": "No clips to review",
+      "emptyDesc": "Suggested clips will appear here after a VOD has been analyzed."
+    },
+    "export": {
+      "title": "Export queue",
+      "subtitle": "1080×1920 rendering, loudness normalized to −14 LUFS and caption export.",
+      "emptyTitle": "Export queue is empty",
+      "emptyDesc": "Approved clips will be rendered here with FFmpeg."
+    },
+    "costs": {
+      "title": "Costs & tokens",
+      "subtitle": "Per project and per stage, cache hits and budget cap.",
+      "emptyTitle": "No Gemini calls recorded",
+      "emptyDesc": "Usage statistics will fill in after the first API call."
+    },
+    "onboarding": {
+      "title": "First launch",
+      "subtitle": "Install FFmpeg, yt-dlp, TwitchDownloaderCLI and whisper.cpp, verified by SHA-256."
+    },
+    "settings": {
+      "title": "Settings",
+      "subtitle": "Appearance, language, Gemini API key and local diagnostics.",
+      "appearanceCard": "Interface and preferences",
+      "appearanceDesc": "Saved in SQLite and applied to the Windows window material.",
+      "diagnosticsCard": "Local diagnostics",
+      "diagnosticsDesc": "Status of the Rust core, the SQLite database and the data folder.",
+      "version": "Version",
+      "repo": "Updater repository",
+      "vibrancy": "Window material",
+      "dataRoot": "Data folder",
+      "database": "SQLite database",
+      "logs": "Logs",
+      "migrations": "SQLite migrations",
+      "savedToast": "Preference saved"
+    }
+  },
+  "actions": {
+    "openOnboarding": "Open First launch",
+    "openSettings": "Open Settings"
+  },
+  "sidecars": {
+    "gpuTitle": "Detected hardware acceleration",
+    "gpuNone": "No GPU detected, falling back to CPU",
+    "whisperVariant": "whisper.cpp variant",
+    "recommended": "Recommended",
+    "manifestEmbedded": "Embedded manifest",
+    "manifestRemote": "Remote Ed25519-signed manifest",
+    "checkRemote": "Check remote manifest",
+    "installAll": "Install all",
+    "importOffline": "Import from folder",
+    "install": "Install",
+    "update": "Update",
+    "retest": "Self-test",
+    "statusReady": "Installed and verified",
+    "statusMissing": "Not installed",
+    "statusUpdate": "Update available",
+    "statusHashMissing": "Manifest needs sync",
+    "continueToApp": "Continue to the app",
+    "allReadyBanner": "All tools are installed and SHA-256 verified.",
+    "missingBanner": "Install the 4 tools below (resumable download or offline import) to enable local processing.",
+    "offlineSuccess": "Offline import finished",
+    "hashHelp": "Run scripts/sync-sidecar-manifest.ps1 to fill in the official SHA-256 checksums, then restart the app."
+  },
+  "gemini": {
+    "title": "Gemini API (Google AI Studio)",
+    "subtitle": "Stored in Windows Credential Manager, never written to SQLite or log files.",
+    "proNoticeTitle": "A Google AI Pro subscription is not an API key",
+    "proNoticeBody": "The Google AI Pro subscription (Gemini app) does not include developer API access. Create a dedicated key in Google AI Studio: free tier (subject to Google's data terms) or pay-as-you-go billing.",
+    "openAiStudio": "Open Google AI Studio",
+    "statusConfigured": "Key stored",
+    "statusMissing": "Not configured",
+    "inputLabel": "Google AI Studio API key",
+    "inputPlaceholder": "Paste your AI Studio API key…",
+    "show": "Show key",
+    "hide": "Hide key",
+    "saveKey": "Save",
+    "testKey": "Test key",
+    "deleteKey": "Remove",
+    "refreshModels": "Refresh list",
+    "modelsTitle": "Available models (models.list)",
+    "modelsEmpty": "Test or save an API key to load the live model list.",
+    "stageALabel": "Stage A: fast triage (Flash-Lite recommended)",
+    "stageBLabel": "Stage B: top-K polish (Flash recommended)",
+    "selectPlaceholder": "Pick a model…",
+    "recommendedSuffix": "recommended",
+    "applyRecommended": "Apply recommended models",
+    "savedKeyToast": "Key saved in Windows Credential Manager",
+    "deletedKeyToast": "Key removed from Windows Credential Manager",
+    "modelsSavedToast": "Model selection saved"
+  }
+}
