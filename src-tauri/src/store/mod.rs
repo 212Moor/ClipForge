@@ -1,4 +1,5 @@
 pub mod migrations;
+pub mod projects;
 
 use crate::error::{AppError, AppResult};
 use chrono::Utc;
@@ -18,9 +19,17 @@ impl Database {
         conn.pragma_update(None, "synchronous", "NORMAL")?;
         conn.pragma_update(None, "foreign_keys", "ON")?;
         conn.pragma_update(None, "busy_timeout", 5000)?;
-
         migrations::run_migrations(&mut conn)?;
+        Ok(Self {
+            conn: Arc::new(Mutex::new(conn)),
+        })
+    }
 
+    #[cfg(test)]
+    pub fn open_in_memory() -> AppResult<Self> {
+        let mut conn = Connection::open_in_memory()?;
+        conn.pragma_update(None, "foreign_keys", "ON")?;
+        migrations::run_migrations(&mut conn)?;
         Ok(Self {
             conn: Arc::new(Mutex::new(conn)),
         })
@@ -35,6 +44,17 @@ impl Database {
             .lock()
             .map_err(|_| AppError::Internal("Verrou SQLite empoisonné".to_string()))?;
         f(&guard)
+    }
+
+    pub fn with_conn_mut<F, T>(&self, f: F) -> AppResult<T>
+    where
+        F: FnOnce(&mut Connection) -> AppResult<T>,
+    {
+        let mut guard = self
+            .conn
+            .lock()
+            .map_err(|_| AppError::Internal("Verrou SQLite empoisonné".to_string()))?;
+        f(&mut guard)
     }
 
     pub fn get_setting(&self, key: &str) -> AppResult<Option<String>> {

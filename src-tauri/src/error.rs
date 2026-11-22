@@ -36,6 +36,15 @@ pub enum AppError {
 
     #[error("Erreur API Gemini : {0}")]
     Gemini(String),
+
+    #[error("Plafond de tokens atteint : {0}")]
+    BudgetExceeded(String),
+
+    #[error("Traitement mis en pause ou annulé : {0}")]
+    Cancelled(String),
+
+    #[error("Validation invalide : {0}")]
+    Validation(String),
 }
 
 pub type AppResult<T> = Result<T, AppError>;
@@ -70,6 +79,9 @@ impl From<AppError> for IpcError {
             AppError::Security(_) => "SECURITY_ERROR",
             AppError::Keyring(_) => "KEYRING_ERROR",
             AppError::Gemini(_) => "GEMINI_ERROR",
+            AppError::BudgetExceeded(_) => "BUDGET_EXCEEDED",
+            AppError::Cancelled(_) => "CANCELLED",
+            AppError::Validation(_) => "VALIDATION_ERROR",
         };
         Self::new(code, err.to_string())
     }

@@ -101,9 +101,6 @@ async deleteGeminiApiKey() : Promise<Result<null, IpcError>> {
     else return { status: "error", error: e  as any };
 }
 },
-/**
- * Sans `api_key_override`, teste la clé déjà enregistrée dans le Gestionnaire d'identifiants Windows.
- */
 async testGeminiApiKey(apiKeyOverride: string | null) : Promise<Result<GeminiKeyTestResult, IpcError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("test_gemini_api_key", { apiKeyOverride }) };
@@ -135,6 +132,332 @@ async setGeminiModelSelection(selection: GeminiModelSelection) : Promise<Result<
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
 }
+},
+async getPricingConfig() : Promise<Result<PricingConfig, IpcError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_pricing_config") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async setPricingConfig(pricing: PricingConfig) : Promise<Result<null, IpcError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("set_pricing_config", { pricing }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async getRateLimitConfig() : Promise<Result<RateLimitConfig, IpcError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_rate_limit_config") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async setRateLimitConfig(config: RateLimitConfig) : Promise<Result<null, IpcError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("set_rate_limit_config", { config }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async listStreamerProfilesCmd() : Promise<Result<StreamerProfileRecord[], IpcError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("list_streamer_profiles_cmd") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async saveStreamerProfileCmd(input: SaveStreamerProfileInput) : Promise<Result<StreamerProfileRecord, IpcError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("save_streamer_profile_cmd", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async deleteStreamerProfileCmd(id: string) : Promise<Result<null, IpcError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("delete_streamer_profile_cmd", { id }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async getSignalWeights() : Promise<Result<SignalWeightsConfig, IpcError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_signal_weights") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async setSignalWeights(config: SignalWeightsConfig) : Promise<Result<null, IpcError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("set_signal_weights", { config }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async listWhisperModels() : Promise<Result<WhisperModelSpec[], IpcError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("list_whisper_models") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async getSelectedWhisperModel() : Promise<Result<string, IpcError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_selected_whisper_model") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async setSelectedWhisperModel(modelId: string) : Promise<Result<null, IpcError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("set_selected_whisper_model", { modelId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async downloadWhisperModel(modelId: string) : Promise<Result<string, IpcError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("download_whisper_model", { modelId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async probeVod(url: string) : Promise<Result<VodProbeMetadata, IpcError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("probe_vod", { url }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async estimateCostBeforeLaunch(vodDurationSec: number, targetClips: number, mode: AnalysisMode) : Promise<Result<ProjectCostEstimate, IpcError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("estimate_cost_before_launch", { vodDurationSec, targetClips, mode }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async createProject(input: CreateProjectInput) : Promise<Result<string, IpcError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("create_project", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async createDemoProjectCmd() : Promise<Result<string, IpcError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("create_demo_project_cmd") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async listProjectsCmd() : Promise<Result<ProjectSummary[], IpcError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("list_projects_cmd") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async deleteProjectCmd(projectId: string) : Promise<Result<null, IpcError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("delete_project_cmd", { projectId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async updateProjectBudgetLimit(projectId: string, newLimit: number) : Promise<Result<null, IpcError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("update_project_budget_limit", { projectId, newLimit }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async startProjectAnalysis(projectId: string, localOnly: boolean) : Promise<Result<null, IpcError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("start_project_analysis", { projectId, localOnly }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async pauseProjectAnalysis(projectId: string) : Promise<Result<boolean, IpcError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("pause_project_analysis", { projectId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async getProjectPipelineStatus(projectId: string) : Promise<Result<PipelineStatusSnapshot, IpcError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_project_pipeline_status", { projectId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async getProjectTimeline(projectId: string) : Promise<Result<ProjectTimelineData, IpcError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_project_timeline", { projectId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async getTokenGauge() : Promise<Result<TokenUsageGauge, IpcError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_token_gauge") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async getCostsDashboardCmd() : Promise<Result<CostsDashboardData, IpcError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_costs_dashboard_cmd") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async listProjectClips(projectId: string) : Promise<Result<ClipRecord[], IpcError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("list_project_clips", { projectId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async promoteProjectCandidates(projectId: string) : Promise<Result<ClipRecord[], IpcError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("promote_project_candidates", { projectId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async setClipReviewStatus(clipId: string, reviewStatus: string) : Promise<Result<ClipRecord, IpcError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("set_clip_review_status", { clipId, reviewStatus }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async saveClipEdits(input: UpdateClipInput) : Promise<Result<ClipRecord, IpcError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("save_clip_edits", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async saveProfileFacecam(profileId: string, rect: FacecamRect) : Promise<Result<null, IpcError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("save_profile_facecam", { profileId, rect }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Régénération ciblée Gemini sur UN SEUL clip (accroche, titre, description, hashtags).
+ */
+async regenerateClipTitle(clipId: string) : Promise<Result<ClipRecord, IpcError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("regenerate_clip_title", { clipId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async listSubtitlePresets() : Promise<SubtitleStylePreset[]> {
+    return await TAURI_INVOKE("list_subtitle_presets");
+},
+async detectRenderEncoders() : Promise<Result<DetectedEncoders, IpcError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("detect_render_encoders") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async getRenderSettings() : Promise<Result<RenderSettings, IpcError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_render_settings") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async setRenderSettings(settings: RenderSettings) : Promise<Result<null, IpcError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("set_render_settings", { settings }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async enqueueClipRender(clipId: string) : Promise<Result<null, IpcError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("enqueue_clip_render", { clipId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async enqueueProjectApprovedRenders(projectId: string) : Promise<Result<number, IpcError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("enqueue_project_approved_renders", { projectId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async cancelClipRender(clipId: string) : Promise<Result<boolean, IpcError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("cancel_clip_render", { clipId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async exportProjectCsv(projectId: string) : Promise<Result<string, IpcError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("export_project_csv", { projectId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async revealInExplorer(path: string) : Promise<Result<null, IpcError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("reveal_in_explorer", { path }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 }
 }
 
@@ -142,8 +465,10 @@ async setGeminiModelSelection(selection: GeminiModelSelection) : Promise<Result<
 
 
 export const events = __makeEvents__<{
+pipelineLogEvent: PipelineLogEvent,
 progressEvent: ProgressEvent
 }>({
+pipelineLogEvent: "pipeline-log-event",
 progressEvent: "progress-event"
 })
 
@@ -153,19 +478,22 @@ progressEvent: "progress-event"
 
 /** user-defined types **/
 
+export type AnalysisMode = "eco" | "standard" | "quality"
 export type AppBootstrapInfo = { app_version: string; github_repo: string; updater_configured: boolean; data_root: string; logs_dir: string; db_path: string; applied_migrations: AppliedMigration[]; platform_vibrancy: string }
 export type AppliedMigration = { version: number; name: string; applied_at: string }
+export type CandidateRecord = { id: string; project_id: string; vod_id: string; rank_index: number; start_sec: number; end_sec: number; peak_sec: number; local_score: number; signals_summary_json: string; transcript_json: string | null; chat_summary_json: string | null; stage_a_keep: boolean | null; stage_a_score: number | null; stage_a_category: string | null; stage_a_adj_start: number | null; stage_a_adj_end: number | null; stage_a_reason: string | null; status: string }
+export type ClipRecord = { id: string; project_id: string; candidate_id: string | null; start_sec: number; end_sec: number; hook: string; title: string; caption: string; hashtags: string[]; category: string; layout_mode: string; subtitle_style: string; subtitles_override_json: string | null; review_status: string; render_status: string; output_mp4_path: string | null; output_caption_path: string | null; score: number | null; transcript_json: string | null }
+export type CostsDashboardData = { gauge: TokenUsageGauge; by_stage: StageCostSummary[]; by_project: ProjectCostSummary[]; recent_calls: GeminiCallRecord[]; usd_to_eur: number }
+export type CreateProjectInput = { name: string | null; source_url: string; streamer_profile_id: string | null; mode: AnalysisMode; target_clips: number; target_min_sec: number; target_max_sec: number; token_budget_limit: number; asr_language: string | null; subscriber_cookie: string | null; probe: VodProbeMetadata | null }
+export type DetectedEncoders = { nvenc: boolean; amf: boolean; qsv: boolean; libx264: boolean; recommended: string }
+/**
+ * Zone facecam normalisée (0.0 à 1.0 par rapport au cadre 16:9 source), mémorisée par streamer.
+ */
+export type FacecamRect = { x: number; y: number; w: number; h: number }
+export type GeminiCallRecord = { id: string; project_id: string | null; project_name: string | null; stage: string; model: string; prompt_version: string; input_tokens: number; output_tokens: number; cached_tokens: number; estimated_cost_usd: number; cache_hit: boolean; duration_ms: number; created_at: string }
 export type GeminiKeyStatus = { configured: boolean; masked_preview: string | null; storage_backend: string }
 export type GeminiKeyTestResult = { valid: boolean; latency_ms: number; models_count: number; models: GeminiModelInfo[]; message: string }
-export type GeminiModelInfo = { 
-/**
- * Identifiant canonique renvoyé par `models.list` (ex. `models/...`).
- */
-name: string; 
-/**
- * Identifiant court, sans préfixe `models/`.
- */
-id: string; display_name: string; description: string; input_token_limit: number; output_token_limit: number; supported_generation_methods: string[]; supports_generate_content: boolean; supports_count_tokens: boolean }
+export type GeminiModelInfo = { name: string; id: string; display_name: string; description: string; input_token_limit: number; output_token_limit: number; supported_generation_methods: string[]; supports_generate_content: boolean; supports_count_tokens: boolean }
 export type GeminiModelSelection = { stage_a_model: string | null; stage_b_model: string | null }
 /**
  * Capacités matérielles détectées (indépendantes de ce que propose le manifeste).
@@ -176,13 +504,54 @@ export type InstalledVersion = { version: string; variant: string; install_dir?:
  * Erreur typée exposée au front via IPC (jamais de trace sensible ni de secret).
  */
 export type IpcError = { code: string; message: string }
+export type JobRecord = { id: string; project_id: string | null; kind: string; state: JobState; progress: number; checkpoint_json: string; error_message: string | null; updated_at: string }
+export type JobState = "queued" | "running" | "paused" | "completed" | "failed" | "cancelled"
 export type ManifestSource = "embedded" | "remote_signed"
+export type ModelRate = { input_per_million_usd: number; output_per_million_usd: number; cached_input_per_million_usd: number }
+export type MutedSegment = { start_sec: number; end_sec: number; reason: string }
+/**
+ * Checkpoint atomique persisté dans `jobs.checkpoint_json` pour garantir la reprise exacte après plantage,
+ * coupure réseau ou plafond de tokens atteint.
+ */
+export type PipelineCheckpoint = { ingest_done: boolean; signals_done: boolean; scoring_done: boolean; asr_completed_ids: string[]; stage_a_completed_batches: number[]; eco_batch_name: string | null; stage_b_done: boolean; current_step: string; total_candidates: number; eta_sec: number | null }
+export type PipelineLogEvent = { project_id: string; level: string; timestamp: string; message: string }
+export type PipelineStatusSnapshot = { job: JobRecord | null; checkpoint: PipelineCheckpoint; spent_input_tokens: number; spent_output_tokens: number; budget_limit_tokens: number; spent_cost_usd: number }
+export type PricingConfig = { schema_version: number; usd_to_eur: number; batch_discount: number; note?: string; defaults_by_family: Partial<{ [key in string]: ModelRate }>; models?: Partial<{ [key in string]: ModelRate }> }
 export type ProgressEvent = { job_id: string; scope: string; step: string; current: number; total: number; percent: number; message: string }
+export type ProjectCostEstimate = { mode: AnalysisMode; estimated_candidates: number; estimated_input_tokens: number; estimated_output_tokens: number; estimated_cost_usd: number; estimated_cost_eur: number; stage_a_model: string; stage_b_model: string | null; uses_batch_discount: boolean; within_target_budget: boolean }
+export type ProjectCostSummary = { project_id: string; project_name: string; mode: AnalysisMode; token_budget_limit: number; input_tokens: number; output_tokens: number; cached_tokens: number; calls: number; cache_hits: number; cost_usd: number }
+export type ProjectSummary = { id: string; name: string; streamer_profile_id: string | null; mode: AnalysisMode; target_clips: number; target_min_sec: number; target_max_sec: number; token_budget_limit: number; status: string; workspace_dir: string; created_at: string; updated_at: string; vod_title: string | null; vod_channel: string | null; vod_duration_sec: number; vod_thumbnail_url: string | null; candidates_count: number; clips_count: number; spent_input_tokens: number; spent_output_tokens: number; spent_cost_usd: number }
+export type ProjectTimelineData = { project: ProjectSummary; vod: VodRecord; signal_windows: SignalWindowRecord[]; candidates: CandidateRecord[]; clips: ClipRecord[] }
+export type RateLimitConfig = { max_rpm: number; max_tpm: number; max_retries: number }
+export type RenderSettings = { 
+/**
+ * "auto" | "h264_nvenc" | "h264_amf" | "h264_qsv" | "libx264"
+ */
+encoder: string; 
+/**
+ * 30 ou 60
+ */
+fps: number; 
+/**
+ * 1 ou 2 jobs en parallèle
+ */
+max_parallel: number; default_facecam: FacecamRect; custom_export_dir: string | null }
+export type SaveStreamerProfileInput = { id: string | null; name: string; tone: string; jargon: string[]; emotes: Partial<{ [key in string]: string }>; games: string[]; inside_jokes: string; forbidden_topics: string }
 export type SidecarId = "ffmpeg" | "yt_dlp" | "twitch_downloader" | "whisper_cpp"
 export type SidecarOperationReport = { id: SidecarId; success: boolean; rolled_back: boolean; active_version: string | null; message: string }
 export type SidecarStatusItem = { id: SidecarId; display_name: string; target_version: string; target_variant: string; manifest_ready: boolean; installed: InstalledVersion | null; previous: InstalledVersion | null; is_installed_and_present: boolean; needs_update: boolean }
 export type SidecarsOverview = { gpu: GpuCapabilities; recommended_whisper_variant: WhisperVariant; active_whisper_variant: WhisperVariant; available_whisper_variants: WhisperVariant[]; manifest_source: ManifestSource; manifest_warning: string | null; manifest_published_at: string; all_ready: boolean; items: SidecarStatusItem[] }
+export type SignalWeightsConfig = { chat: number; audio: number; emotes: number; events: number; voice: number; scene: number; min_peak_distance_sec: number; pre_peak_lead_sec: number; min_clip_sec: number; max_clip_sec: number; candidate_multiplier: number; emotes_list: string[]; keywords_list: string[] }
+export type SignalWindowRecord = { start_sec: number; end_sec: number; chat_rate: number; emote_score: number; event_score: number; audio_lufs: number; audio_peak: number; voice_ratio: number; scene_change: number; viewer_clips_count: number; is_muted: boolean; composite_score: number }
+export type StageCostSummary = { stage: string; calls: number; cache_hits: number; input_tokens: number; output_tokens: number; cached_tokens: number; cost_usd: number }
+export type StreamerProfileRecord = { id: string; name: string; tone: string; jargon: string[]; emotes: Partial<{ [key in string]: string }>; games: string[]; inside_jokes: string; forbidden_topics: string; facecam_rect: FacecamRect | null; updated_at: string }
+export type SubtitleStylePreset = { id: string; label: string; font_name: string; font_size: number; primary_color_hex: string; highlight_color_hex: string; outline_color_hex: string; back_color_hex: string; border_style: number; outline_width: number; shadow_depth: number; bold: boolean; uppercase: boolean }
 export type ThemeMode = "dark" | "light" | "system"
+export type TokenUsageGauge = { today_input_tokens: number; today_output_tokens: number; today_cost_usd: number; month_input_tokens: number; month_output_tokens: number; month_cost_usd: number; total_cache_hits: number; total_calls: number }
+export type UpdateClipInput = { id: string; start_sec: number; end_sec: number; hook: string; title: string; caption: string; hashtags: string[]; category: string; layout_mode: string; subtitle_style: string; subtitles_override_json: string | null }
+export type VodProbeMetadata = { source_url: string; twitch_vod_id: string | null; channel_name: string; title: string; duration_sec: number; thumbnail_url: string | null; muted_segments: MutedSegment[] }
+export type VodRecord = { id: string; project_id: string; source_url: string; twitch_vod_id: string | null; channel_name: string | null; title: string | null; duration_sec: number; thumbnail_url: string | null; audio_path: string | null; chat_path: string | null; muted_segments: MutedSegment[]; metadata_json: string }
+export type WhisperModelSpec = { id: string; label: string; filename: string; size_mb: number; url: string; downloaded: boolean; local_path: string | null }
 export type WhisperVariant = "cuda" | "vulkan" | "cpu"
 
 /** tauri-specta globals **/

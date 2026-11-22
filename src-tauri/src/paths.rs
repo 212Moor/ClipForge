@@ -12,6 +12,7 @@ pub struct AppPaths {
     pub models: PathBuf,
     pub logs: PathBuf,
     pub database: PathBuf,
+    pub pricing_file: PathBuf,
 }
 
 impl AppPaths {
@@ -25,6 +26,7 @@ impl AppPaths {
             models: root.join("models"),
             logs: root.join("logs"),
             database: root.join("clipforge.db"),
+            pricing_file: root.join("pricing.json"),
             root,
         };
 

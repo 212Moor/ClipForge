@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "usd_to_eur": 0.92,
+  "batch_discount": 0.5,
+  "note": "Tarifs en USD par 1 million de tokens. Ajoutez un identifiant exact de models.list dans 'models' pour surcharger une famille.",
+  "defaults_by_family": {
+    "flash-lite": {
+      "input_per_million_usd": 0.1,
+      "output_per_million_usd": 0.4,
+      "cached_input_per_million_usd": 0.025
+    },
+    "flash": {
+      "input_per_million_usd": 0.3,
+      "output_per_million_usd": 2.5,
+      "cached_input_per_million_usd": 0.075
+    },
+    "pro": {
+      "input_per_million_usd": 1.25,
+      "output_per_million_usd": 10.0,
+      "cached_input_per_million_usd": 0.3125
+    },
+    "fallback": {
+      "input_per_million_usd": 0.3,
+      "output_per_million_usd": 2.5,
+      "cached_input_per_million_usd": 0.075
+    }
+  },
+  "models": {}
+}

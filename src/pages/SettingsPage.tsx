@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { Database, Globe, Monitor, Moon, Palette, Sun } from "lucide-react";
 import { commands, type ThemeMode } from "@/bindings";
 import { GeminiSettingsCard } from "@/components/settings/GeminiSettingsCard";
+import { PipelineSettingsCard } from "@/components/settings/PipelineSettingsCard";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -130,6 +131,7 @@ export function SettingsPage() {
       </Card>
 
       <GeminiSettingsCard />
+      <PipelineSettingsCard />
 
       <Card>
         <CardHeader>

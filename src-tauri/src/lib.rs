@@ -16,7 +16,7 @@ pub mod store;
 pub mod util;
 
 use crate::config::release_config;
-use crate::ipc::{apply_native_vibrancy, ProgressEvent, ThemeMode};
+use crate::ipc::{apply_native_vibrancy, PipelineLogEvent, ProgressEvent, ThemeMode};
 use crate::paths::AppPaths;
 use crate::state::AppState;
 use crate::store::Database;
@@ -36,7 +36,6 @@ pub fn run() {
     let db = Database::open(&paths.database)
         .expect("Échec d'ouverture ou de migration de la base SQLite ClipForge");
 
-    // Les commandes doivent être désignées par leur chemin de module (ipc::nom).
     let specta_builder = Builder::<tauri::Wry>::new()
         .commands(collect_commands![
             ipc::get_app_bootstrap,
@@ -55,10 +54,50 @@ pub fn run() {
             ipc::list_gemini_models,
             ipc::get_gemini_model_selection,
             ipc::set_gemini_model_selection,
+            ipc::get_pricing_config,
+            ipc::set_pricing_config,
+            ipc::get_rate_limit_config,
+            ipc::set_rate_limit_config,
+            ipc::list_streamer_profiles_cmd,
+            ipc::save_streamer_profile_cmd,
+            ipc::delete_streamer_profile_cmd,
+            ipc::get_signal_weights,
+            ipc::set_signal_weights,
+            ipc::list_whisper_models,
+            ipc::get_selected_whisper_model,
+            ipc::set_selected_whisper_model,
+            ipc::download_whisper_model,
+            ipc::probe_vod,
+            ipc::estimate_cost_before_launch,
+            ipc::create_project,
+            ipc::create_demo_project_cmd,
+            ipc::list_projects_cmd,
+            ipc::delete_project_cmd,
+            ipc::update_project_budget_limit,
+            ipc::start_project_analysis,
+            ipc::pause_project_analysis,
+            ipc::get_project_pipeline_status,
+            ipc::get_project_timeline,
+            ipc::get_token_gauge,
+            ipc::get_costs_dashboard_cmd,
+            ipc::list_project_clips,
+            ipc::promote_project_candidates,
+            ipc::set_clip_review_status,
+            ipc::save_clip_edits,
+            ipc::save_profile_facecam,
+            ipc::regenerate_clip_title,
+            ipc::list_subtitle_presets,
+            ipc::detect_render_encoders,
+            ipc::get_render_settings,
+            ipc::set_render_settings,
+            ipc::enqueue_clip_render,
+            ipc::enqueue_project_approved_renders,
+            ipc::cancel_clip_render,
+            ipc::export_project_csv,
+            ipc::reveal_in_explorer,
         ])
-        .events(collect_events![ProgressEvent]);
+        .events(collect_events![ProgressEvent, PipelineLogEvent]);
 
-    // Régénère src/bindings.ts à chaque lancement en debug ; à committer ensuite.
     #[cfg(debug_assertions)]
     specta_builder
         .export(Typescript::default(), "../src/bindings.ts")
