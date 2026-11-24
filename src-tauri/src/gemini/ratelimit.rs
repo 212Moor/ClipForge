@@ -108,11 +108,11 @@ impl GeminiRateLimiter {
 }
 
 pub fn backoff_with_jitter(attempt: u32) -> Duration {
-    let base_ms = 1_200u64.saturating_mul(1u64 << attempt.min(5));
+    let base_ms = 4_000u64.saturating_mul(1u64 << attempt.min(4));
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.subsec_nanos() as u64)
         .unwrap_or(0);
     let jitter_ms = nanos % 750;
-    Duration::from_millis((base_ms + jitter_ms).min(45_000))
+    Duration::from_millis((base_ms + jitter_ms).min(65_000))
 }

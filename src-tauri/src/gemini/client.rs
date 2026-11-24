@@ -11,6 +11,7 @@ use crate::util::blocking;
 use chrono::Utc;
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use specta::Type;
 use std::time::{Duration, Instant};
 
@@ -19,10 +20,50 @@ const SETTING_STAGE_A_MODEL: &str = "gemini.model.stage_a";
 const SETTING_STAGE_B_MODEL: &str = "gemini.model.stage_b";
 const SETTING_OUTPUT_LANGUAGE: &str = "gemini.output_language";
 
-pub const PROMPT_VERSION: &str = "v1";
-pub const STAGE_A_SYSTEM_PROMPT: &str = include_str!("../../resources/prompts/v1/stage_a.md");
-pub const STAGE_B_SYSTEM_PROMPT: &str = include_str!("../../resources/prompts/v1/stage_b.md");
+pub const PROMPT_VERSION: &str = "v4";
 
+pub const STAGE_A_SYSTEM_PROMPT: &str = r#"Tu es un monteur TikTok/Shorts spécialisé dans les lives Twitch (y compris petits streams sans chat actif).
+Tu reçois un lot de fenêtres candidates issues d'une VOD. Pour chaque candidat :
+- i : index du candidat
+- d : durée initiale en secondes de la fenêtre [0 .. d]
+- t : transcription horodatée en secondes relatives (ex: [-18]... [0]... [42]..., avec 25 s de contexte avant et après)
+- c : résumé du chat (NE pénalise jamais l'absence de chat)
+- s : [score_chat, score_audio]
+
+RÈGLES DE REJET (k=0, s<=35) :
+1. Dialogue pur de PNJ / cinématique passive sans aucune réaction ni commentaire du streamer.
+2. Silence, écran de chargement, lecture de menu ou bruit isolé sans parole.
+
+BARÈME (rôle : sélectionner largement les meilleurs passages avant le contrôle visuel Étage B) :
+- 0-35 : cinématique pure / menu / vide (k=0)
+- 36-54 : moment banal (k=0)
+- 55-79 : bon moment de live publiable (fail, réaction drôle, vanne, conduite chaotique, tension, moment absurde) (k=1)
+- 80-100 : pépite virale (fou rire, énorme fail, rage culte, punchline, clutch) (k=1)
+
+Sur un lot de 12 candidats, garde en moyenne les 3 à 6 meilleurs moments (k=1) si le live contient du gameplay et des réactions.
+
+DÉCOUPAGE PRÉCIS (a et b en secondes) :
+- a (entre -25 et +35) : décalage du début par rapport à [0] pour démarrer PILE sur le setup.
+- b (entre -35 et +25) : décalage de la fin par rapport à [d] pour couper PILE 1 à 2 secondes après la chute.
+- Vise une durée nerveuse entre 15 s et 55 s.
+
+Renvoie UNIQUEMENT un tableau JSON valide conforme au schéma (i, k, s, c, a, b, r <= 12 mots)."#;
+
+pub const STAGE_B_SYSTEM_PROMPT: &str = r#"Tu es un directeur créatif TikTok/Shorts gaming/Twitch.
+Tu reçois des finalistes pré-sélectionnés, accompagnés de 3 VIGNETTES VISUELLES (début, milieu, fin) lorsque disponibles.
+
+TA MISSION : classer ces finalistes de 0 à 100 et rédiger une accroche, un titre, une légende et des hashtags pour CHACUN.
+- Mets keep=0 et score<=15 UNIQUEMENT pour une disqualification visuelle indiscutable : écran noir, AFK, menu pause/inventaire/chargement figé, ou cinématique pure avec bandes noires sans réaction drôle.
+- Pour TOUT vrai moment de gameplay, conduite, fail, rage ou blague du streamer, mets keep=1 et attribue un score nuancé entre 50 et 100 afin de classer les meilleurs en tête (ne rejette pas un bon clip juste parce que 3 images fixes paraissent calmes).
+
+FINITION ÉDITORIALE :
+- hook : accroche choc de 3 à 7 mots MAXIMUM (sans spoiler la chute).
+- title : titre accrocheur <= 60 caractères.
+- caption : courte légende TikTok engageante (1 à 2 phrases).
+- tags : 4 à 6 hashtags pertinents sans #.
+- a (entre -20 et +25) et b (entre -25 et +20) : affinage fin du début et de la fin.
+
+Renvoie UNIQUEMENT un tableau JSON valide conforme au schéma."#;
 const ALLOWED_CATEGORIES: &[&str] = &[
     "fun",
     "clutch",
@@ -32,6 +73,45 @@ const ALLOWED_CATEGORIES: &[&str] = &[
     "story",
     "skill",
 ];
+
+fn default_stage_b_keep() -> u32 {
+    1
+}
+
+fn default_stage_b_score() -> u32 {
+    75
+}
+
+#[derive(Debug, Clone)]
+pub struct VisualInlineImage {
+    pub label: String,
+    pub mime_type: String,
+    pub bytes: Vec<u8>,
+}
+
+pub fn encode_base64(input: &[u8]) -> String {
+    const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(((input.len() + 2) / 3) * 4);
+    for chunk in input.chunks(3) {
+        let b0 = chunk[0] as u32;
+        let b1 = if chunk.len() > 1 { chunk[1] as u32 } else { 0 };
+        let b2 = if chunk.len() > 2 { chunk[2] as u32 } else { 0 };
+        let triple = (b0 << 16) | (b1 << 8) | b2;
+        out.push(TABLE[((triple >> 18) & 0x3F) as usize] as char);
+        out.push(TABLE[((triple >> 12) & 0x3F) as usize] as char);
+        if chunk.len() > 1 {
+            out.push(TABLE[((triple >> 6) & 0x3F) as usize] as char);
+        } else {
+            out.push('=');
+        }
+        if chunk.len() > 2 {
+            out.push(TABLE[(triple & 0x3F) as usize] as char);
+        } else {
+            out.push('=');
+        }
+    }
+    out
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct GeminiModelInfo {
@@ -60,8 +140,6 @@ pub struct GeminiModelSelection {
     pub stage_a_model: Option<String>,
     pub stage_b_model: Option<String>,
 }
-
-// --- Payloads & schémas compacts Étage A / Étage B ---
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StageACandidatePayload {
@@ -103,6 +181,10 @@ pub struct StageBOutputItem {
     pub a: f64,
     #[serde(default)]
     pub b: f64,
+    #[serde(default = "default_stage_b_keep")]
+    pub keep: u32,
+    #[serde(default = "default_stage_b_score")]
+    pub score: u32,
 }
 
 #[derive(Debug, Clone)]
@@ -162,6 +244,7 @@ fn build_http_client(timeout_secs: u64) -> AppResult<reqwest::Client> {
     reqwest::Client::builder()
         .connect_timeout(Duration::from_secs(12))
         .timeout(Duration::from_secs(timeout_secs))
+        .local_address(std::net::IpAddr::V4(std::net::Ipv4Addr::UNSPECIFIED))
         .user_agent("ClipForge/0.2")
         .build()
         .map_err(|e| AppError::Network(e.to_string()))
@@ -182,7 +265,6 @@ pub fn save_output_language(db: &Database, lang: &str) -> AppResult<()> {
     db.set_setting(SETTING_OUTPUT_LANGUAGE, &serde_json::to_string(lang)?)
 }
 
-/// Construit le préfixe système stable (consignes + profil du streamer) placé en tête pour le cache implicite.
 pub fn build_system_prefix(
     base_prompt: &str,
     profile: Option<&StreamerProfileRecord>,
@@ -256,6 +338,8 @@ pub fn stage_b_response_schema() -> serde_json::Value {
             "type": "OBJECT",
             "properties": {
                 "i": { "type": "INTEGER" },
+                "keep": { "type": "INTEGER" },
+                "score": { "type": "INTEGER" },
                 "hook": { "type": "STRING" },
                 "title": { "type": "STRING" },
                 "caption": { "type": "STRING" },
@@ -266,7 +350,7 @@ pub fn stage_b_response_schema() -> serde_json::Value {
                 "a": { "type": "NUMBER" },
                 "b": { "type": "NUMBER" }
             },
-            "required": ["i", "hook", "title", "caption", "tags"]
+            "required": ["i", "keep", "score", "hook", "title", "caption", "tags"]
         }
     })
 }
@@ -404,7 +488,6 @@ pub fn save_model_selection(db: &Database, selection: &GeminiModelSelection) -> 
     Ok(())
 }
 
-/// Appelle l'endpoint officiel `POST /v1beta/models/{model}:countTokens` pour mesurer précisément avant envoi.
 pub async fn count_tokens_remote(
     api_key: &str,
     model_id: &str,
@@ -430,7 +513,6 @@ pub async fn count_tokens_remote(
         .map_err(|e| AppError::Network(format!("countTokens inaccessible : {e}")))?;
 
     if !resp.status().is_success() {
-        // Repli propre sur l'estimateur local si un modèle ne supporte pas generateContentRequest dans countTokens
         return Ok(estimate_tokens_local(system_instruction) + estimate_tokens_local(user_payload));
     }
 
@@ -443,11 +525,6 @@ pub async fn count_tokens_remote(
     Ok(total)
 }
 
-/// Exécute un appel Gemini structuré JSON avec :
-/// 1. Cache disque SQLite SHA-256 en priorité (0 token si déjà calculé)
-/// 2. Contrôle strict du plafond budgétaire avant l'appel
-/// 3. Limiteur RPM/TPM + backoff exponentiel avec jitter sur 429/503
-/// 4. Désactivation optionnelle du thinking (Étage A) avec repli automatique si non supporté par le modèle
 pub async fn call_gemini_structured(
     db: &Database,
     limiter: &GeminiRateLimiter,
@@ -462,8 +539,53 @@ pub async fn call_gemini_structured(
     max_output_tokens: u32,
     disable_thinking: bool,
 ) -> AppResult<StructuredCallOutcome> {
+    call_gemini_structured_multimodal(
+        db,
+        limiter,
+        pricing,
+        api_key,
+        project_id,
+        stage,
+        model_id,
+        system_prefix,
+        user_payload,
+        &[],
+        response_schema,
+        max_output_tokens,
+        disable_thinking,
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+pub async fn call_gemini_structured_multimodal(
+    db: &Database,
+    limiter: &GeminiRateLimiter,
+    pricing: &PricingConfig,
+    api_key: &str,
+    project_id: Option<&str>,
+    stage: &str,
+    model_id: &str,
+    system_prefix: &str,
+    user_payload: &str,
+    images: &[VisualInlineImage],
+    response_schema: serde_json::Value,
+    max_output_tokens: u32,
+    disable_thinking: bool,
+) -> AppResult<StructuredCallOutcome> {
     let short_model = model_id.strip_prefix("models/").unwrap_or(model_id);
-    let payload_hash = compute_payload_hash(short_model, PROMPT_VERSION, system_prefix, user_payload);
+    let cache_payload_str = if images.is_empty() {
+        user_payload.to_string()
+    } else {
+        let mut h = Sha256::new();
+        h.update(user_payload.as_bytes());
+        for img in images {
+            h.update(img.label.as_bytes());
+            h.update(&img.bytes);
+        }
+        format!("{user_payload}#img:{:x}", h.finalize())
+    };
+    let payload_hash = compute_payload_hash(short_model, PROMPT_VERSION, system_prefix, &cache_payload_str);
 
     // 1. Cache disque SQLite d'abord : 0 token dépensé
     let db_lookup = db.clone();
@@ -507,9 +629,16 @@ pub async fn call_gemini_structured(
     }
 
     // 2. Estimation précise + contrôle du plafond dur par projet
-    let est_input = count_tokens_remote(api_key, short_model, system_prefix, user_payload)
-        .await
-        .unwrap_or_else(|_| estimate_tokens_local(system_prefix) + estimate_tokens_local(user_payload));
+    let est_input = if images.is_empty() {
+        count_tokens_remote(api_key, short_model, system_prefix, user_payload)
+            .await
+            .unwrap_or_else(|_| estimate_tokens_local(system_prefix) + estimate_tokens_local(user_payload))
+    } else {
+        estimate_tokens_local(system_prefix)
+            .saturating_add(estimate_tokens_local(user_payload))
+            .saturating_add((images.len() as u32).saturating_mul(260))
+    };
+
     if let Some(pid) = project_id {
         let db_cap = db.clone();
         let pid_owned = pid.to_string();
@@ -517,8 +646,20 @@ pub async fn call_gemini_structured(
         blocking(move || enforce_budget_cap(&db_cap, &pid_owned, projected)).await?;
     }
 
-    // 3. File unique + limiteur RPM/TPM + retry exponentiel sur 429/503
-    let client = build_http_client(90)?;
+    // 3. Construction des parties (texte + vignettes JPEG base64 éventuelles)
+    let mut user_parts = Vec::with_capacity(1 + images.len() * 2);
+    user_parts.push(serde_json::json!({ "text": user_payload }));
+    for img in images {
+        user_parts.push(serde_json::json!({ "text": img.label }));
+        user_parts.push(serde_json::json!({
+            "inlineData": {
+                "mimeType": img.mime_type,
+                "data": encode_base64(&img.bytes)
+            }
+        }));
+    }
+
+    let client = build_http_client(180)?;
     let max_retries = limiter.max_retries().await;
     let mut use_thinking_zero = disable_thinking;
 
@@ -543,7 +684,7 @@ pub async fn call_gemini_structured(
             },
             "contents": [{
                 "role": "user",
-                "parts": [{ "text": user_payload }]
+                "parts": user_parts
             }],
             "generationConfig": gen_cfg
         });
@@ -564,7 +705,8 @@ pub async fn call_gemini_structured(
                     continue;
                 }
                 return Err(AppError::Network(format!(
-                    "Connexion perdue avec Google AI Studio : {net_err}"
+                    "Connexion perdue avec Google AI Studio (timeout={}) : {net_err:?}",
+                    net_err.is_timeout()
                 )));
             }
         };
@@ -581,17 +723,16 @@ pub async fn call_gemini_structured(
             continue;
         }
 
-        // Repli propre si le modèle choisi par l'utilisateur ne supporte pas `thinkingConfig`
         if status == StatusCode::BAD_REQUEST
             && use_thinking_zero
-            && raw_body.to_ascii_lowercase().contains("thinking")
+            && !raw_body.to_ascii_lowercase().contains("api key")
         {
             use_thinking_zero = false;
             continue;
         }
 
         if !status.is_success() {
-            return Err(AppError::Gemini(format_api_error(status, &raw_body)));
+            return Err(AppError::Gemini(format!("[{short_model}] {}", format_api_error(status, &raw_body))));
         }
 
         let duration_ms = started.elapsed().as_millis().min(u128::from(u32::MAX)) as u32;
@@ -665,7 +806,6 @@ pub async fn call_gemini_structured(
     }
 }
 
-/// Soumet un lot asynchrone à l'API Batch de Gemini (mode Éco, réduction de coût de 50 %).
 pub async fn submit_eco_batch_stage_a(
     api_key: &str,
     model_id: &str,
@@ -686,7 +826,7 @@ pub async fn submit_eco_batch_stage_a(
                     "contents": [{ "role": "user", "parts": [{ "text": payload }] }],
                     "generationConfig": {
                         "temperature": 0.2,
-                        "maxOutputTokens": 1200,
+                        "maxOutputTokens": 1400,
                         "responseMimeType": "application/json",
                         "responseSchema": schema
                     }
@@ -776,7 +916,6 @@ pub async fn poll_eco_batch_job(api_key: &str, batch_name: &str) -> AppResult<Ec
     Ok(EcoBatchPollResult::Succeeded(texts))
 }
 
-/// Valide strictement la sortie JSON de l'étage A et normalise les bornes de sécurité.
 pub fn parse_and_validate_stage_a(raw_json: &str) -> AppResult<Vec<StageAOutputItem>> {
     let cleaned = strip_markdown_fences(raw_json);
     let mut items: Vec<StageAOutputItem> = serde_json::from_str(cleaned)
@@ -796,16 +935,14 @@ pub fn parse_and_validate_stage_a(raw_json: &str) -> AppResult<Vec<StageAOutputI
         } else {
             "fun".to_string()
         };
-        item.a = item.a.clamp(-10.0, 10.0);
-        item.b = item.b.clamp(-10.0, 10.0);
-        // Raison bornée à 12 mots maximum
+        item.a = item.a.clamp(-25.0, 35.0);
+        item.b = item.b.clamp(-35.0, 25.0);
         let words: Vec<&str> = item.r.split_whitespace().take(12).collect();
         item.r = words.join(" ");
     }
     Ok(items)
 }
 
-/// Valide strictement la sortie JSON de l'étage B (hook <= 8 mots, titre <= 60 caractères).
 pub fn parse_and_validate_stage_b(raw_json: &str) -> AppResult<Vec<StageBOutputItem>> {
     let cleaned = strip_markdown_fences(raw_json);
     let mut items: Vec<StageBOutputItem> = serde_json::from_str(cleaned)
@@ -824,13 +961,14 @@ pub fn parse_and_validate_stage_b(raw_json: &str) -> AppResult<Vec<StageBOutputI
             .filter(|t| !t.is_empty())
             .take(8)
             .collect();
-        item.a = item.a.clamp(-5.0, 5.0);
-        item.b = item.b.clamp(-5.0, 5.0);
+        item.a = item.a.clamp(-20.0, 25.0);
+        item.b = item.b.clamp(-25.0, 20.0);
+        item.keep = if item.keep > 0 { 1 } else { 0 };
+        item.score = item.score.min(100);
     }
     Ok(items)
 }
 
-/// Régénération ciblée d'un seul clip (ne renvoie jamais les autres clips, économie maximale).
 pub async fn regenerate_single_clip_metadata(
     db: &Database,
     limiter: &GeminiRateLimiter,
@@ -857,8 +995,8 @@ pub async fn regenerate_single_clip_metadata(
         &system_prefix,
         &payload,
         stage_b_response_schema(),
-        450,
-        false,
+        600,
+        true,
     )
     .await?;
 
@@ -869,10 +1007,23 @@ pub async fn regenerate_single_clip_metadata(
 }
 
 fn extract_candidate_text(val: &serde_json::Value) -> Option<String> {
-    val.pointer("/candidates/0/content/parts/0/text")
-        .and_then(|v| v.as_str())
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
+    if let Some(parts) = val
+        .pointer("/candidates/0/content/parts")
+        .and_then(|v| v.as_array())
+    {
+        for part in parts.iter().rev() {
+            if part.get("thought").and_then(|v| v.as_bool()).unwrap_or(false) {
+                continue;
+            }
+            if let Some(t) = part.get("text").and_then(|v| v.as_str()) {
+                let trimmed = t.trim();
+                if !trimmed.is_empty() {
+                    return Some(trimmed.to_string());
+                }
+            }
+        }
+    }
+    None
 }
 
 fn strip_markdown_fences(raw: &str) -> &str {
@@ -899,12 +1050,14 @@ fn format_api_error(status: StatusCode, body: &str) -> String {
     let detail = api_msg.unwrap_or_else(|| format!("HTTP {}", status.as_u16()));
 
     match status {
+        StatusCode::BAD_REQUEST if !body.to_ascii_lowercase().contains("api key") => format!(
+            "Requête rejetée par Google AI Studio ({detail}). Vérifiez le modèle sélectionné dans Paramètres."
+        ),
         StatusCode::BAD_REQUEST | StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN => format!(
             "Clé API refusée par Google AI Studio ({detail}). Utilisez une clé générée sur aistudio.google.com : un abonnement Google AI Pro ne fournit pas d'accès API."
         ),
         StatusCode::TOO_MANY_REQUESTS => {
-            "Limite de requêtes (HTTP 429) atteinte sur Google AI Studio. Réessayez dans quelques secondes."
-                .to_string()
+            format!("Limite de requêtes (HTTP 429) atteinte sur Google AI Studio ({detail}).")
         }
         _ => format!("Erreur Google AI Studio : {detail}"),
     }
@@ -924,12 +1077,12 @@ mod tests {
 
     #[test]
     fn validates_and_normalizes_stage_a_and_b_schemas() {
-        let a_raw = r#"[{"i":12,"k":1,"s":115,"c":"CLUTCH","a":-22.0,"b":1.5,"r":"un deux trois quatre cinq six sept huit neuf dix onze douze treize"}]"#;
+        let a_raw = r#"[{"i":12,"k":1,"s":115,"c":"CLUTCH","a":-40.0,"b":1.5,"r":"un deux trois quatre cinq six sept huit neuf dix onze douze treize"}]"#;
         let a = parse_and_validate_stage_a(a_raw).unwrap();
         assert_eq!(a.len(), 1);
         assert_eq!(a[0].s, 100);
         assert_eq!(a[0].c, "clutch");
-        assert_eq!(a[0].a, -10.0);
+        assert_eq!(a[0].a, -25.0);
         assert_eq!(a[0].r.split_whitespace().count(), 12);
 
         let b_raw = r##"[{"i":12,"hook":"un deux trois quatre cinq six sept huit neuf","title":"Titre très long qui dépasse largement la limite autorisée de soixante caractères maximum","caption":"Incroyable action","tags":["#clutch","gaming"]}]"##;
@@ -937,5 +1090,8 @@ mod tests {
         assert_eq!(b[0].hook.split_whitespace().count(), 8);
         assert!(b[0].title.chars().count() <= 60);
         assert_eq!(b[0].tags[0], "clutch");
+        assert_eq!(b[0].keep, 1);
+        assert_eq!(encode_base64(b"Man"), "TWFu");
+        assert_eq!(encode_base64(b"Ma"), "TWE=");
     }
 }

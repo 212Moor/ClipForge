@@ -95,12 +95,52 @@ pub fn score_and_select_candidates(
     let voice_raw: Vec<f64> = windows.iter().map(|w| w.voice_ratio).collect();
     let scene_raw: Vec<f64> = windows.iter().map(|w| w.scene_change).collect();
 
+    // Détection "petit stream" : adapte automatiquement les poids si le chat est très clairsemé
+    let non_muted_count = windows.iter().filter(|w| !w.is_muted).count().max(1);
+    let chat_active_windows = windows
+        .iter()
+        .filter(|w| !w.is_muted && w.chat_rate > 0.0)
+        .count();
+    let total_chat_msgs: f64 = windows
+        .iter()
+        .filter(|w| !w.is_muted)
+        .map(|w| w.chat_rate * (w.end_sec - w.start_sec).max(1.0))
+        .sum();
+    let sparse_chat =
+        total_chat_msgs < 80.0 || (chat_active_windows as f64 / non_muted_count as f64) < 0.04;
+
+    // Dynamique vocale locale : contraste soudain par rapport aux 100 s précédentes, pondéré par la voix
+    let mut vocal_burst_raw = Vec::with_capacity(windows.len());
+    let mut sustained_voice_raw = Vec::with_capacity(windows.len());
+    for i in 0..windows.len() {
+        let lo = i.saturating_sub(20);
+        let prev_med = if i > lo {
+            median(&audio_raw[lo..i])
+        } else {
+            audio_raw[i]
+        };
+        let pos_delta = (audio_raw[i] - prev_med).max(0.0);
+        let burst = pos_delta * (0.25 + 0.75 * voice_raw[i]) + voice_raw[i] * 10.0;
+        vocal_burst_raw.push(burst);
+
+        let slo = i.saturating_sub(1);
+        let shi = (i + 2).min(windows.len());
+        let mut s_sum = 0.0;
+        for j in slo..shi {
+            let energy = ((windows[j].audio_lufs + 55.0).max(0.0) / 55.0).clamp(0.0, 1.0);
+            s_sum += voice_raw[j] * (0.4 + 0.6 * energy);
+        }
+        sustained_voice_raw.push(s_sum / (shi - slo).max(1) as f64);
+    }
+
     let chat_n = rolling_robust_normalize(&chat_raw, half_window);
     let audio_n = rolling_robust_normalize(&audio_raw, half_window);
     let emote_n = rolling_robust_normalize(&emote_raw, half_window);
     let event_n = rolling_robust_normalize(&event_raw, half_window);
     let voice_n = rolling_robust_normalize(&voice_raw, half_window);
     let scene_n = rolling_robust_normalize(&scene_raw, half_window);
+    let vocal_burst_n = rolling_robust_normalize(&vocal_burst_raw, half_window);
+    let sustained_voice_n = rolling_robust_normalize(&sustained_voice_raw, half_window);
 
     let weight_sum = (cfg.chat + cfg.audio + cfg.emotes + cfg.events + cfg.voice + cfg.scene).max(1e-6);
 
@@ -115,15 +155,49 @@ pub fn score_and_select_candidates(
         } else {
             0.0
         };
-        let score = (cfg.chat * chat_n[i]
-            + cfg.audio * audio_n[i]
-            + cfg.emotes * emote_n[i]
-            + cfg.events * event_n[i]
-            + cfg.voice * voice_n[i]
-            + cfg.scene * scene_n[i])
-            / weight_sum
-            + viewer_boost;
-        raw_composite.push(score.clamp(0.0, 1.0));
+
+        let base_score = if sparse_chat {
+            let chat_scale = (total_chat_msgs / 80.0).clamp(0.08, 1.0);
+            let w_chat = cfg.chat * chat_scale;
+            let w_emotes = cfg.emotes * chat_scale;
+            let w_events = cfg.events * chat_scale;
+            let freed = (cfg.chat - w_chat) + (cfg.emotes - w_emotes) + (cfg.events - w_events);
+            let w_burst = freed * 0.60;
+            let w_sustained = freed * 0.40;
+            let eff_sum = (w_chat + w_emotes + w_events + cfg.audio + cfg.voice + cfg.scene + w_burst + w_sustained).max(1e-6);
+
+            let mut s = (w_chat * chat_n[i]
+                + cfg.audio * audio_n[i]
+                + w_emotes * emote_n[i]
+                + w_events * event_n[i]
+                + cfg.voice * voice_n[i]
+                + cfg.scene * scene_n[i]
+                + w_burst * vocal_burst_n[i]
+                + w_sustained * sustained_voice_n[i])
+                / eff_sum;
+
+            // Pénalise les bruits forts du jeu sans voix (explosions, sirènes, crashs muets)
+            if voice_raw[i] < 0.15 {
+                s *= 0.55;
+            }
+            // Bonus dès qu'un rare message de chat apparaît autour du pic (±5 s)
+            let near_chat = (i.saturating_sub(1)..=(i + 1).min(windows.len() - 1))
+                .any(|j| windows[j].chat_rate > 0.0);
+            if near_chat {
+                s += 0.18;
+            }
+            s
+        } else {
+            (cfg.chat * chat_n[i]
+                + cfg.audio * audio_n[i]
+                + cfg.emotes * emote_n[i]
+                + cfg.events * event_n[i]
+                + cfg.voice * voice_n[i]
+                + cfg.scene * scene_n[i])
+                / weight_sum
+        };
+
+        raw_composite.push((base_score + viewer_boost).clamp(0.0, 1.0));
     }
 
     let smoothed = smooth_series(&raw_composite);
@@ -154,7 +228,7 @@ pub fn score_and_select_candidates(
             .unwrap_or(std::cmp::Ordering::Equal)
     });
 
-    let max_candidates = ((target_clips.max(1) * cfg.candidate_multiplier.max(1)) as usize).min(60);
+    let vod_hours = (windows.last().map(|w| w.end_sec).unwrap_or(0.0) / 3600.0).max(0.5); let max_candidates = ((target_clips.max(1) * cfg.candidate_multiplier.max(1)) as usize).max((vod_hours * 8.0).round() as usize).clamp(24, 300);
     let min_dist = cfg.min_peak_distance_sec.max(30.0);
     let total_vod_end = windows.last().map(|w| w.end_sec).unwrap_or(0.0);
     let min_len = (target_min_sec as f64).max(cfg.min_clip_sec).clamp(20.0, 75.0);
@@ -205,6 +279,8 @@ pub fn score_and_select_candidates(
             "emote_norm": (emote_n[idx] * 100.0).round() / 100.0,
             "event_norm": (event_n[idx] * 100.0).round() / 100.0,
             "voice_norm": (voice_n[idx] * 100.0).round() / 100.0,
+            "vocal_burst_norm": (vocal_burst_n[idx] * 100.0).round() / 100.0,
+            "sparse_chat_mode": sparse_chat,
             "chat_rate": windows[idx].chat_rate,
             "audio_lufs": windows[idx].audio_lufs,
         }))
@@ -287,5 +363,33 @@ mod tests {
                 assert!((candidates[i].peak_sec - candidates[j].peak_sec).abs() >= 90.0);
             }
         }
+    }
+
+    #[test]
+    fn adapts_to_sparse_chat_and_favors_vocal_reactions() {
+        let mut windows: Vec<SignalWindowRecord> = (0..120)
+            .map(|i| {
+                let mut w = make_window(i, 0.0, -36.0, false);
+                w.voice_ratio = 0.25;
+                w
+            })
+            .collect();
+
+        // Explosion forte sans voix
+        windows[25].audio_lufs = -8.0;
+        windows[25].audio_peak = 0.95;
+        windows[25].voice_ratio = 0.05;
+
+        // Vraie réaction vocale du streamer
+        windows[80].audio_lufs = -11.0;
+        windows[80].audio_peak = 0.88;
+        windows[80].voice_ratio = 0.92;
+        windows[81].audio_lufs = -13.0;
+        windows[81].voice_ratio = 0.88;
+
+        let cfg = SignalWeightsConfig::default();
+        let cands = score_and_select_candidates(&mut windows, &cfg, 2, 25, 45);
+        assert!(!cands.is_empty());
+        assert!(windows[80].composite_score > windows[25].composite_score);
     }
 }

@@ -350,7 +350,7 @@ export function NewProjectPage() {
               <input
                 type="range"
                 min={5}
-                max={20}
+                max={100}
                 value={targetClips}
                 onChange={(e) => setTargetClips(Number(e.target.value))}
                 className="w-full accent-violet-500"

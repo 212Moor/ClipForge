@@ -2,7 +2,7 @@ use crate::asr::{transcribe_candidate_window, WindowTranscript};
 use crate::error::{AppError, AppResult};
 use crate::gemini::budget::{get_project_budget_snapshot, load_pricing_config};
 use crate::gemini::client::{
-    build_system_prefix, call_gemini_structured, list_models, load_model_selection,
+    build_system_prefix, call_gemini_structured, call_gemini_structured_multimodal, VisualInlineImage, list_models, load_model_selection,
     load_output_language, parse_and_validate_stage_a, parse_and_validate_stage_b,
     poll_eco_batch_job, stage_a_response_schema, stage_b_response_schema,
     submit_eco_batch_stage_a, StageACandidatePayload, StageAOutputItem, StageBInputItem,
@@ -14,6 +14,13 @@ use crate::ingest::download_audio_and_chat;
 use crate::ipc::{emit_pipeline_log, emit_progress};
 use crate::paths::AppPaths;
 use crate::scoring::score_and_select_candidates;
+use crate::sidecars::{manifest::SidecarId, prepare_verified_executable};
+use std::collections::HashMap;
+use std::path::Path;
+use std::time::Duration;
+use tokio::process::Command;
+#[cfg(target_os = "windows")]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 use crate::signals::{
     extract_local_signals, load_chat_messages, load_signal_config, summarize_chat_for_window,
     CompactChatSummary,
@@ -216,6 +223,8 @@ pub async fn run_analysis_pipeline(
     .await?;
 
     limiter.update_config(rl_cfg).await;
+    if cp.scoring_done && vod.duration_sec > 21_600.0 && cp.total_candidates <= 60 { cp.scoring_done = false; cp.asr_completed_ids.clear(); cp.stage_a_completed_batches.clear(); cp.eco_batch_name = None; cp.stage_b_done = false; }
+    if cp.stage_b_done && !local_only { cp.stage_a_completed_batches.clear(); cp.eco_batch_name = None; cp.stage_b_done = false; }
 
     let save_cp = |db_ref: &Database, state: JobState, progress: f64, cp_ref: &PipelineCheckpoint, err: Option<String>| {
         let rec = JobRecord {
@@ -476,13 +485,13 @@ pub async fn run_analysis_pipeline(
             let live_models = list_models(&api_key).await?;
             let usable: Vec<String> = live_models
                 .into_iter()
-                .filter(|m| m.supports_generate_content)
+                .filter(|m| m.supports_generate_content && m.id.starts_with("gemini-") && !m.id.contains("image") && !m.id.contains("tts") && !m.id.contains("audio") && !m.id.contains("live") && !m.id.contains("robotics") && !m.id.contains("computer"))
                 .map(|m| m.id)
                 .collect();
             if selection.stage_a_model.is_none() {
                 selection.stage_a_model = usable
                     .iter()
-                    .find(|id| id.contains("flash-lite"))
+                    .rev().find(|id| id.contains("flash-lite") && !id.contains("preview")).or_else(|| usable.iter().rev().find(|id| id.contains("flash-lite")))
                     .or_else(|| usable.iter().find(|id| id.contains("flash")))
                     .or_else(|| usable.first())
                     .cloned();
@@ -490,7 +499,7 @@ pub async fn run_analysis_pipeline(
             if selection.stage_b_model.is_none() {
                 selection.stage_b_model = usable
                     .iter()
-                    .find(|id| id.contains("flash") && !id.contains("lite"))
+                    .rev().find(|id| id.contains("flash") && !id.contains("lite") && !id.contains("preview")).or_else(|| usable.iter().rev().find(|id| id.contains("flash") && !id.contains("lite")))
                     .or_else(|| usable.iter().find(|id| id.contains("flash")))
                     .or_else(|| usable.first())
                     .cloned();
@@ -697,7 +706,7 @@ pub async fn run_analysis_pipeline(
         }
 
         // ------------------------------------------------------------------
-        // ÉTAPE 6 : FINITION GEMINI — ÉTAGE B (Top K uniquement, hors mode Éco)
+        // ÉTAPE 6 : FINITION VISUELLE & ÉDITORIALE GEMINI — ÉTAGE B (lots de 4 avec 3 vignettes JPEG)
         // ------------------------------------------------------------------
         check_cancelled(&cancel_flag)?;
         cp.current_step = "stage_b".to_string();
@@ -705,9 +714,18 @@ pub async fn run_analysis_pipeline(
         let db_top = db.clone();
         let pid_top = project_id.clone();
         let all_cands = blocking(move || list_candidates(&db_top, &pid_top)).await?;
+
+        // Pool de finalistes pour l'Étage B : tous les k=1, complété par les meilleurs scores >= 45
+        let target_k = (project.target_clips as usize).max(1);
+        let finalist_pool = if project.mode == AnalysisMode::Eco {
+            target_k
+        } else {
+            (target_k + (target_k / 2).clamp(8, 25)).clamp(12, 125)
+        };
         let mut kept: Vec<_> = all_cands
-            .into_iter()
+            .iter()
             .filter(|c| c.stage_a_keep == Some(true))
+            .cloned()
             .collect();
         kept.sort_by(|a, b| {
             b.stage_a_score
@@ -715,95 +733,215 @@ pub async fn run_analysis_pipeline(
                 .cmp(&a.stage_a_score.unwrap_or(0))
                 .then_with(|| b.local_score.partial_cmp(&a.local_score).unwrap_or(std::cmp::Ordering::Equal))
         });
-        kept.truncate(project.target_clips as usize);
+        if kept.len() < finalist_pool {
+            let kept_ids: HashSet<String> = kept.iter().map(|c| c.id.clone()).collect();
+            let mut extras: Vec<_> = all_cands
+                .iter()
+                .filter(|c| !kept_ids.contains(&c.id) && c.stage_a_score.unwrap_or(0) >= 25)
+                .cloned()
+                .collect();
+            extras.sort_by(|a, b| {
+                b.stage_a_score
+                    .unwrap_or(0)
+                    .cmp(&a.stage_a_score.unwrap_or(0))
+                    .then_with(|| b.local_score.partial_cmp(&a.local_score).unwrap_or(std::cmp::Ordering::Equal))
+            });
+            for extra in extras {
+                if kept.len() >= finalist_pool {
+                    break;
+                }
+                kept.push(extra);
+            }
+        }
+        if kept.is_empty() {
+            kept = all_cands.clone();
+        }
+        kept.truncate(finalist_pool);
 
         if project.mode == AnalysisMode::Eco || kept.is_empty() {
-            // Mode Éco : crée directement les clips à partir de l'étage A sans appeler l'étage B
             create_clips_from_stage_a_only(&db, &project_id, &kept, vod.duration_sec).await?;
             cp.stage_b_done = true;
         } else if !cp.stage_b_done {
-            emit_progress(&app, "pipeline", &project_id, "stage_b", 88.0, format!("Finition Gemini Étage B sur les {} meilleurs clips…", kept.len()));
+            // Extraction rapide de 3 vignettes JPEG 384px par finaliste (hors démo)
+            emit_progress(
+                &app,
+                "pipeline",
+                &project_id,
+                "stage_b",
+                85.0,
+                format!("Extraction des vignettes visuelles pour {} finalistes…", kept.len()),
+            );
+            let previews_map = extract_visual_previews_for_candidates(
+                &app,
+                &db,
+                &paths,
+                &project_id,
+                &workspace_dir,
+                &vod.source_url,
+                vod.duration_sec,
+                &kept,
+                is_demo,
+            )
+            .await;
+            let total_imgs: usize = previews_map.values().map(|v| v.len()).sum();
+            emit_pipeline_log(
+                &app,
+                &project_id,
+                "info",
+                format!("Analyse visuelle prête : {total_imgs} vignettes extraites sur {} finalistes.", kept.len()),
+            );
 
             let sys_b = build_system_prefix(STAGE_B_SYSTEM_PROMPT, profile.as_ref(), &out_lang);
-            let inputs_b: Vec<StageBInputItem> = kept
-                .iter()
-                .map(|c| {
-                    let compact_text = c
-                        .transcript_json
-                        .as_deref()
-                        .and_then(|s| serde_json::from_str::<WindowTranscript>(s).ok())
-                        .map(|tr| tr.compact_text)
-                        .unwrap_or_default();
-                    let chat_sum: CompactChatSummary = c
-                        .chat_summary_json
-                        .as_deref()
-                        .and_then(|s| serde_json::from_str(s).ok())
-                        .unwrap_or(CompactChatSummary {
-                            r: 0.0,
-                            e: vec![],
-                            m: vec![],
-                        });
-                    StageBInputItem {
-                        i: c.rank_index,
-                        d: (c.end_sec - c.start_sec).round().max(1.0) as u32,
-                        cat: c.stage_a_category.clone().unwrap_or_else(|| "fun".to_string()),
-                        t: compact_text,
-                        c: chat_sum,
+            let mut all_b_items: Vec<crate::gemini::client::StageBOutputItem> = Vec::new();
+            let mut total_in_b = 0u32;
+            let mut total_out_b = 0u32;
+            let mut all_cache_hit = true;
+
+            let chunks: Vec<&[crate::store::projects::CandidateRecord]> = kept.chunks(4).collect();
+            let total_chunks = chunks.len().max(1);
+
+            for (c_idx, chunk) in chunks.iter().enumerate() {
+                check_cancelled(&cancel_flag)?;
+                let pct = 88.0 + ((c_idx as f64 / total_chunks as f64) * 10.0);
+                emit_progress(
+                    &app,
+                    "pipeline",
+                    &project_id,
+                    "stage_b",
+                    pct,
+                    format!("Finition visuelle Gemini Étage B (lot {}/{total_chunks})…", c_idx + 1),
+                );
+
+                let inputs_b: Vec<StageBInputItem> = chunk
+                    .iter()
+                    .map(|c| {
+                        let compact_text = c
+                            .transcript_json
+                            .as_deref()
+                            .and_then(|s| serde_json::from_str::<WindowTranscript>(s).ok())
+                            .map(|tr| tr.compact_text)
+                            .unwrap_or_default();
+                        let chat_sum: CompactChatSummary = c
+                            .chat_summary_json
+                            .as_deref()
+                            .and_then(|s| serde_json::from_str(s).ok())
+                            .unwrap_or(CompactChatSummary {
+                                r: 0.0,
+                                e: vec![],
+                                m: vec![],
+                            });
+                        StageBInputItem {
+                            i: c.rank_index,
+                            d: (c.end_sec - c.start_sec).round().max(1.0) as u32,
+                            cat: c.stage_a_category.clone().unwrap_or_else(|| "fun".to_string()),
+                            t: compact_text,
+                            c: chat_sum,
+                        }
+                    })
+                    .collect();
+
+                let mut batch_images: Vec<VisualInlineImage> = Vec::new();
+                for c in *chunk {
+                    if let Some(imgs) = previews_map.get(&c.rank_index) {
+                        batch_images.extend(imgs.iter().cloned());
                     }
-                })
-                .collect();
-
-            let payload_b = serde_json::to_string(&inputs_b)?;
-            let outcome = call_gemini_structured(
-                &db,
-                &limiter,
-                &pricing,
-                &api_key,
-                Some(&project_id),
-                "stage_b",
-                &stage_b_model,
-                &sys_b,
-                &payload_b,
-                stage_b_response_schema(),
-                2600,
-                false,
-            )
-            .await?;
-
-            let b_items = match parse_and_validate_stage_b(&outcome.text) {
-                Ok(items) => items,
-                Err(_) => {
-                    let retry = call_gemini_structured(
-                        &db,
-                        &limiter,
-                        &pricing,
-                        &api_key,
-                        Some(&project_id),
-                        "stage_b",
-                        &stage_b_model,
-                        &sys_b,
-                        &format!("CORRECTION JSON STRICTE REQUISE.\n{payload_b}"),
-                        stage_b_response_schema(),
-                        2600,
-                        false,
-                    )
-                    .await?;
-                    parse_and_validate_stage_b(&retry.text)?
                 }
-            };
 
-            save_clips_from_stage_b(&db, &project_id, &kept, &b_items, vod.duration_sec).await?;
+                let payload_b = serde_json::to_string(&inputs_b)?;
+                let outcome = call_gemini_structured_multimodal(
+                    &db,
+                    &limiter,
+                    &pricing,
+                    &api_key,
+                    Some(&project_id),
+                    "stage_b",
+                    &stage_b_model,
+                    &sys_b,
+                    &payload_b,
+                    &batch_images,
+                    stage_b_response_schema(),
+                    2400,
+                    true,
+                )
+                .await?;
+
+                total_in_b = total_in_b.saturating_add(outcome.input_tokens);
+                total_out_b = total_out_b.saturating_add(outcome.output_tokens);
+                if !outcome.cache_hit {
+                    all_cache_hit = false;
+                }
+
+                let b_items = match parse_and_validate_stage_b(&outcome.text) {
+                    Ok(items) => items,
+                    Err(_) => {
+                        let retry = call_gemini_structured_multimodal(
+                            &db,
+                            &limiter,
+                            &pricing,
+                            &api_key,
+                            Some(&project_id),
+                            "stage_b",
+                            &stage_b_model,
+                            &sys_b,
+                            &format!("CORRECTION JSON STRICTE REQUISE.\n{payload_b}"),
+                            &batch_images,
+                            stage_b_response_schema(),
+                            2400,
+                            true,
+                        )
+                        .await?;
+                        parse_and_validate_stage_b(&retry.text)?
+                    }
+                };
+                all_b_items.extend(b_items);
+            }
+
+            // Conserve tous les keep == 1, puis complète jusqu'à target_k avec les meilleurs scores >= 20
+            // (les vrais écrans noirs / menus / cinématiques notés <= 15 restent exclus)
+            let mut validated_b: Vec<_> = all_b_items.iter().filter(|b| b.keep == 1).cloned().collect();
+            validated_b.sort_by(|a, b| b.score.cmp(&a.score));
+            if validated_b.len() < target_k {
+                let already: HashSet<u32> = validated_b.iter().map(|b| b.i).collect();
+                let mut rescue: Vec<_> = all_b_items
+                    .iter()
+                    .filter(|b| !already.contains(&b.i) && b.score >= 20)
+                    .cloned()
+                    .collect();
+                rescue.sort_by(|a, b| b.score.cmp(&a.score));
+                for item in rescue {
+                    if validated_b.len() >= target_k {
+                        break;
+                    }
+                    validated_b.push(item);
+                }
+            }
+            if validated_b.is_empty() {
+                validated_b = all_b_items.clone();
+                validated_b.sort_by(|a, b| b.score.cmp(&a.score));
+            }
+            validated_b.truncate(target_k);
+
+            let selected_ranks: HashSet<u32> = validated_b.iter().map(|b| b.i).collect();
+            let final_kept: Vec<_> = kept
+                .iter()
+                .filter(|c| selected_ranks.contains(&c.rank_index))
+                .cloned()
+                .collect();
+            let rejected_visual = all_b_items.len().saturating_sub(validated_b.len());
+
+            save_clips_from_stage_b(&db, &project_id, &final_kept, &validated_b, vod.duration_sec).await?;
             emit_pipeline_log(
                 &app,
                 &project_id,
                 "info",
                 format!(
-                    "Étage B terminé : {} clips enrichis ({}).",
-                    b_items.len(),
-                    if outcome.cache_hit {
+                    "Étage B visuel terminé : {} clips retenus ({} écartés après contrôle visuel/qualité, {}).",
+                    final_kept.len(),
+                    rejected_visual,
+                    if all_cache_hit {
                         "100% cache hit, 0 token".to_string()
                     } else {
-                        format!("{} in / {} out tokens", outcome.input_tokens, outcome.output_tokens)
+                        format!("{total_in_b} in / {total_out_b} out tokens")
                     }
                 ),
             );
@@ -851,6 +989,162 @@ pub async fn run_analysis_pipeline(
             Err(err)
         }
     }
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn extract_visual_previews_for_candidates(
+    app: &AppHandle,
+    db: &Database,
+    paths: &AppPaths,
+    project_id: &str,
+    workspace_dir: &Path,
+    source_url: &str,
+    vod_duration_sec: f64,
+    candidates: &[crate::store::projects::CandidateRecord],
+    is_demo: bool,
+) -> HashMap<u32, Vec<VisualInlineImage>> {
+    let mut out: HashMap<u32, Vec<VisualInlineImage>> = HashMap::new();
+    if is_demo || source_url.trim().is_empty() || candidates.is_empty() {
+        return out;
+    }
+
+    let Ok(yt_dlp) = prepare_verified_executable(db, paths, SidecarId::YtDlp).await else {
+        return out;
+    };
+    let Ok(ffmpeg) = prepare_verified_executable(db, paths, SidecarId::Ffmpeg).await else {
+        return out;
+    };
+
+    let previews_dir = workspace_dir.join("previews");
+    let _ = std::fs::create_dir_all(&previews_dir);
+
+    // 1. Vérifie d'abord si toutes les vignettes sont déjà en cache local
+    let mut missing_any = false;
+    for c in candidates {
+        for idx in 1..=3u8 {
+            let p = previews_dir.join(format!("cand_{:03}_f{idx}.jpg", c.rank_index));
+            if !p.is_file() {
+                missing_any = true;
+            }
+        }
+    }
+
+    let mut stream_url: Option<String> = None;
+    if missing_any {
+        let mut cmd = Command::new(&yt_dlp);
+        cmd.env("PYTHONUTF8", "1").args([
+            "--force-ipv4",
+            "--retries",
+            "5",
+            "--socket-timeout",
+            "20",
+            "-f",
+            "360p/480p/worstvideo[height>=320]/best[height<=480]/worst",
+            "-g",
+            "--no-playlist",
+        ]);
+        let cookie_file = workspace_dir.join("cookies.txt");
+        if cookie_file.is_file() {
+            cmd.arg("--cookies").arg(&cookie_file);
+        }
+        cmd.arg(source_url);
+        #[cfg(target_os = "windows")]
+        cmd.creation_flags(CREATE_NO_WINDOW);
+
+        match tokio::time::timeout(Duration::from_secs(25), cmd.output()).await {
+            Ok(Ok(res)) if res.status.success() => {
+                let s = String::from_utf8_lossy(&res.stdout);
+                stream_url = s.lines().map(str::trim).find(|l| l.starts_with("http")).map(ToOwned::to_owned);
+            }
+            _ => {
+                emit_pipeline_log(
+                    app,
+                    project_id,
+                    "warn",
+                    "Flux vidéo basse résolution inaccessible — repli automatique Étage B texte seul.",
+                );
+            }
+        }
+    }
+
+    let mut consecutive_failures = 0usize;
+    for c in candidates {
+        let est_start = (c.start_sec + c.stage_a_adj_start.unwrap_or(0.0)).max(0.0);
+        let est_end = (c.end_sec + c.stage_a_adj_end.unwrap_or(0.0))
+            .min(if vod_duration_sec > 0.0 { vod_duration_sec } else { c.end_sec + 25.0 })
+            .max(est_start + 12.0);
+        let dur = est_end - est_start;
+        let sample_times = [
+            est_start + dur * 0.15,
+            est_start + dur * 0.50,
+            est_start + dur * 0.85,
+        ];
+
+        let mut imgs = Vec::new();
+        for (idx, &t_sec) in sample_times.iter().enumerate() {
+            let jpg_path = previews_dir.join(format!("cand_{:03}_f{}.jpg", c.rank_index, idx + 1));
+            if !jpg_path.is_file() {
+                let Some(ref url) = stream_url else {
+                    continue;
+                };
+                if consecutive_failures >= 3 {
+                    continue;
+                }
+                let mut ff = Command::new(&ffmpeg);
+                ff.args([
+                    "-y",
+                    "-nostdin",
+                    "-hide_banner",
+                    "-loglevel",
+                    "error",
+                    "-ss",
+                    &format!("{t_sec:.2}"),
+                    "-i",
+                    url,
+                    "-frames:v",
+                    "1",
+                    "-vf",
+                    "scale=384:-2",
+                    "-q:v",
+                    "6",
+                ])
+                .arg(&jpg_path);
+                #[cfg(target_os = "windows")]
+                ff.creation_flags(CREATE_NO_WINDOW);
+
+                match tokio::time::timeout(Duration::from_secs(15), ff.output()).await {
+                    Ok(Ok(r)) if r.status.success() && jpg_path.is_file() => {
+                        consecutive_failures = 0;
+                    }
+                    _ => {
+                        let _ = std::fs::remove_file(&jpg_path);
+                        consecutive_failures += 1;
+                        continue;
+                    }
+                }
+            }
+
+            if let Ok(bytes) = std::fs::read(&jpg_path) {
+                if bytes.len() > 500 {
+                    imgs.push(VisualInlineImage {
+                        label: format!(
+                            "Vignette candidat #{} ({}/3, t={:+.0}s)",
+                            c.rank_index,
+                            idx + 1,
+                            t_sec - c.start_sec
+                        ),
+                        mime_type: "image/jpeg".to_string(),
+                        bytes,
+                    });
+                }
+            }
+        }
+        if !imgs.is_empty() {
+            out.insert(c.rank_index, imgs);
+        }
+    }
+
+    out
 }
 
 async fn apply_stage_a_results(
@@ -936,16 +1230,16 @@ async fn create_clips_from_stage_a_only(
             tx.execute("DELETE FROM clips WHERE project_id = ?1", [&pid])?;
             for c in &kept_owned {
                 let start = (c.start_sec + c.stage_a_adj_start.unwrap_or(0.0)).max(0.0);
-                let end = (c.end_sec + c.stage_a_adj_end.unwrap_or(0.0))
-                    .min(if vod_duration_sec > 0.0 { vod_duration_sec } else { c.end_sec + 10.0 })
-                    .max(start + 10.0);
+                let max_end = if vod_duration_sec > 0.0 { vod_duration_sec } else { c.end_sec + 25.0 };
+                let raw_end = (c.end_sec + c.stage_a_adj_end.unwrap_or(0.0) + 3.0).min(max_end);
+                let end = raw_end.max(start + 15.0).min(start + 70.0).min(max_end);
                 let cat = c.stage_a_category.clone().unwrap_or_else(|| "fun".to_string());
                 let title = c.stage_a_reason.clone().unwrap_or_else(|| format!("Clip #{}", c.rank_index));
                 tx.execute(
                     r#"INSERT INTO clips
                      (id, project_id, candidate_id, start_sec, end_sec, hook, title, caption, hashtags_json,
                       category, layout_mode, subtitle_style, review_status, render_status, created_at, updated_at)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, '', '["twitch","clip"]', ?8, 'split', 'bold_pop', 'pending', 'idle', ?9, ?9)"#,
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, '', '["twitch","clip"]', ?8, 'fill', 'bold_pop', 'pending', 'idle', ?9, ?9)"#,
                     rusqlite::params![
                         uuid::Uuid::new_v4().to_string(),
                         pid,
@@ -987,9 +1281,9 @@ async fn save_clips_from_stage_b(
                 let adj_s = c.stage_a_adj_start.unwrap_or(0.0) + b.map(|x| x.a).unwrap_or(0.0);
                 let adj_e = c.stage_a_adj_end.unwrap_or(0.0) + b.map(|x| x.b).unwrap_or(0.0);
                 let start = (c.start_sec + adj_s).max(0.0);
-                let end = (c.end_sec + adj_e)
-                    .min(if vod_duration_sec > 0.0 { vod_duration_sec } else { c.end_sec + 10.0 })
-                    .max(start + 10.0);
+                let max_end = if vod_duration_sec > 0.0 { vod_duration_sec } else { c.end_sec + 25.0 };
+                let raw_end = (c.end_sec + adj_e + 3.0).min(max_end);
+                let end = raw_end.max(start + 15.0).min(start + 70.0).min(max_end);
                 let cat = c.stage_a_category.clone().unwrap_or_else(|| "fun".to_string());
                 let hook = b.map(|x| x.hook.clone()).unwrap_or_default();
                 let title = b
@@ -1006,7 +1300,7 @@ async fn save_clips_from_stage_b(
                     "INSERT INTO clips
                      (id, project_id, candidate_id, start_sec, end_sec, hook, title, caption, hashtags_json,
                       category, layout_mode, subtitle_style, review_status, render_status, created_at, updated_at)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 'split', 'bold_pop', 'pending', 'idle', ?11, ?11)",
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 'fill', 'bold_pop', 'pending', 'idle', ?11, ?11)",
                     rusqlite::params![
                         uuid::Uuid::new_v4().to_string(),
                         pid,

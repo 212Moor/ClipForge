@@ -154,7 +154,7 @@ pub async fn transcribe_candidate_window(
         return Ok(build_demo_transcript(candidate_index, start_sec, end_sec));
     }
 
-    let margin = 15.0f64;
+    let margin = 25.0f64;
     let slice_start = (start_sec - margin).max(0.0);
     let slice_end = if vod_duration_sec > 0.0 {
         (end_sec + margin).min(vod_duration_sec)
@@ -227,7 +227,7 @@ pub async fn transcribe_candidate_window(
         )));
     }
 
-    let raw_json = fs::read_to_string(&out_json)?;
+    let raw_bytes = fs::read(&out_json)?; let raw_json = String::from_utf8_lossy(&raw_bytes).trim_start_matches('\u{feff}').to_string();
     let _ = fs::remove_file(&chunk_wav);
 
     parse_whisper_json(&raw_json, slice_start, start_sec, end_sec, language)
@@ -294,8 +294,7 @@ pub fn parse_whisper_json(
             segments.push(TranscriptSegment {
                 start_sec: slice_origin_sec + from_ms / 1000.0,
                 end_sec: slice_origin_sec + to_ms / 1000.0,
-                text,
-                words,
+                text, words: if words.iter().any(|w| w.word.contains(char::REPLACEMENT_CHARACTER)) { Vec::new() } else { words },
             });
         }
     }
@@ -341,8 +340,8 @@ pub fn compress_transcript(segments: &[TranscriptSegment], base_start_sec: f64) 
     }
 
     let joined = parts.join(" ");
-    if joined.chars().count() > 900 {
-        let truncated: String = joined.chars().take(897).collect();
+    if joined.chars().count() > 1600 {
+        let truncated: String = joined.chars().take(1597).collect();
         format!("{truncated}...")
     } else {
         joined

@@ -143,9 +143,9 @@ pub fn estimate_project_cost(
     stage_a_model: Option<&str>,
     stage_b_model: Option<&str>,
 ) -> ProjectCostEstimate {
-    let clamped_clips = target_clips.clamp(1, 30);
+    let clamped_clips = target_clips.clamp(1, 100);
     let max_by_duration = ((vod_duration_sec.max(600.0) / 110.0).floor() as u32).max(4);
-    let estimated_candidates = (clamped_clips * 3).min(45).min(max_by_duration);
+    let estimated_candidates = (clamped_clips * 3).min(300).min(max_by_duration);
 
     let batch_size = 12u32;
     let num_stage_a_batches = ((estimated_candidates + batch_size - 1) / batch_size).max(1);

@@ -26,6 +26,10 @@ pub struct SubtitleStyleCustom {
     pub primary_color_hex: Option<String>,
     pub highlight_color_hex: Option<String>,
     pub font_size: Option<u32>,
+    #[serde(default)]
+    pub hide_subtitles: bool,
+    #[serde(default)]
+    pub hide_hook: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
@@ -45,6 +49,10 @@ pub struct ClipOverridesPayload {
     pub primary_color_hex: Option<String>,
     pub highlight_color_hex: Option<String>,
     pub font_size: Option<u32>,
+    #[serde(default)]
+    pub hide_subtitles: bool,
+    #[serde(default)]
+    pub hide_hook: bool,
 }
 
 impl Default for ClipOverridesPayload {
@@ -56,6 +64,8 @@ impl Default for ClipOverridesPayload {
             primary_color_hex: None,
             highlight_color_hex: None,
             font_size: None,
+            hide_subtitles: false,
+            hide_hook: false,
         }
     }
 }
@@ -307,7 +317,7 @@ pub fn generate_ass_document(
     let margin_l = 76;
     let margin_r = 172;
     let margin_v_sub = 435;
-    let margin_v_hook = 290;
+    let _margin_v_hook = 290;
 
     let mut doc = String::new();
     doc.push_str("[Script Info]\n");
@@ -337,7 +347,7 @@ pub fn generate_ass_document(
     ));
     doc.push_str(&format!(
         "Style: HookBanner,{},62,&H00FFFFFF,&H0022D3EE,&H00120B29,&H25120B29,-1,0,0,0,100,100,0,0,3,12,0,8,{},{},{},1\n\n",
-        preset.font_name, margin_l, margin_r, margin_v_hook
+        preset.font_name, 72, 72, 220
     ));
 
     doc.push_str("[Events]\n");
@@ -345,7 +355,7 @@ pub fn generate_ass_document(
 
     // 1. Accroche (hook) 0.15s -> 2.85s (zone sûre haute)
     let trimmed_hook = hook_text.trim();
-    if !trimmed_hook.is_empty() {
+    if !overrides.hide_hook && !trimmed_hook.is_empty() {
         let clip_dur = (clip_end_sec - clip_start_sec).max(1.0);
         let hook_end = 2.85f64.min(clip_dur);
         let escaped_hook = escape_ass_text(&trimmed_hook.to_uppercase());
@@ -358,6 +368,7 @@ pub fn generate_ass_document(
     }
 
     // 2. Sous-titres mot par mot regroupés par groupes de 4 mots maximum pour une lecture fluide
+    if overrides.hide_subtitles || style_id == "none" { return doc; }
     let words = extract_relative_words(transcript, overrides, clip_start_sec, clip_end_sec);
     // En ASS, \1c&HBBGGRR& utilise uniquement les 6 derniers caractères (sans alpha)
     let primary_bgr = &primary_ass[primary_ass.len().saturating_sub(6)..];

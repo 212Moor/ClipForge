@@ -835,7 +835,7 @@ pub fn promote_candidates_to_clips(db: &Database, project_id: &str) -> AppResult
                 r#"INSERT INTO clips
                  (id, project_id, candidate_id, start_sec, end_sec, hook, title, caption, hashtags_json,
                   category, layout_mode, subtitle_style, review_status, render_status, created_at, updated_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, '["twitch","clip","gaming"]', 'fun', 'split', 'bold_pop', 'pending', 'idle', ?9, ?9)"#,
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, '["twitch","clip","gaming"]', 'fun', 'fill', 'bold_pop', 'pending', 'idle', ?9, ?9)"#,
                 rusqlite::params![
                     uuid::Uuid::new_v4().to_string(),
                     project_id,

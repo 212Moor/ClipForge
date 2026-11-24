@@ -436,7 +436,7 @@ pub async fn ensure_clip_video_segment(
 
         let mut cmd = Command::new(&yt_dlp);
         cmd.args([
-            "--download-sections",
+            "--force-ipv4", "--retries", "10", "--fragment-retries", "10", "--retry-sleep", "2", "--socket-timeout", "30", "--download-sections",
             &format!("*{seg_start:.2}-{seg_end:.2}"),
             "--force-keyframes-at-cuts",
             "-f",

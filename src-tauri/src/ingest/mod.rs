@@ -98,7 +98,7 @@ pub async fn probe_vod_metadata(
     let yt_dlp = prepare_verified_executable(db, paths, SidecarId::YtDlp).await?;
 
     let mut cmd = Command::new(&yt_dlp);
-    cmd.args(["--dump-single-json", "--no-download", "--no-warnings"]);
+    cmd.env("PYTHONUTF8", "1").args(["--force-ipv4", "--retries", "10", "--retry-sleep", "2", "--socket-timeout", "30", "--dump-single-json", "--no-download", "--no-warnings"]);
     if let Some(cookies) = cookie_path {
         cmd.arg("--cookies").arg(cookies);
     }
@@ -230,7 +230,7 @@ pub async fn create_project_in_db(
                     name,
                     input.streamer_profile_id,
                     input.mode.as_str(),
-                    input.target_clips.clamp(1, 30),
+                    input.target_clips.clamp(1, 100),
                     input.target_min_sec.clamp(15, 60),
                     input.target_max_sec.clamp(25, 90),
                     input.token_budget_limit.max(5_000),
@@ -299,12 +299,12 @@ pub async fn download_audio_and_chat(
             let mut cmd = Command::new(&yt_dlp);
             cmd.args([
                 "-f",
-                "bestaudio/audio_only/worst",
-                "--no-playlist",
+                "bestaudio/Audio_Only/audio_only/worst",
+                "--force-ipv4", "--retries", "10", "--fragment-retries", "10", "--retry-sleep", "2", "--socket-timeout", "30", "--concurrent-fragments", "4", "--no-playlist",
                 "--continue",
                 "-o",
             ])
-            .arg(&raw_audio_path);
+            .arg(&raw_audio_path); cmd.env("PYTHONUTF8", "1"); if let Some(ff_dir) = ffmpeg.parent() { cmd.arg("--ffmpeg-location").arg(ff_dir); }
             if let Some(cookies) = cookie_opt {
                 cmd.arg("--cookies").arg(cookies);
             }

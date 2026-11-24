@@ -13,6 +13,8 @@ pub mod sidecars;
 pub mod signals;
 pub mod state;
 pub mod store;
+pub mod preview;
+pub mod tiktok;
 pub mod util;
 
 use crate::config::release_config;
@@ -95,6 +97,17 @@ pub fn run() {
             ipc::cancel_clip_render,
             ipc::export_project_csv,
             ipc::reveal_in_explorer,
+            ipc::tiktok_get_status,
+            ipc::tiktok_save_credentials,
+            ipc::tiktok_connect_oauth,
+            ipc::tiktok_disconnect,
+            ipc::tiktok_upload_clip,
+            ipc::tiktok_open_studio_window,
+            ipc::tiktok_prepare_studio_upload,
+            ipc::tiktok_suggest_copy,
+            ipc::tiktok_auto_inject_upload,
+            ipc::prepare_clip_preview,
+            ipc::open_tiktok_publish,
         ])
         .events(collect_events![ProgressEvent, PipelineLogEvent]);
 

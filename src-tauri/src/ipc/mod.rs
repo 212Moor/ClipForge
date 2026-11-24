@@ -970,6 +970,378 @@ pub fn reveal_in_explorer(path: String) -> Result<(), IpcError> {
     Ok(render::reveal_path_in_explorer(&path)?)
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+pub struct ClipPreviewResult {
+    pub video_path: String,
+    pub preview_url: String,
+    pub offset_sec: f64,
+    pub is_rendered: bool,
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn prepare_clip_preview(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    clip_id: String,
+) -> Result<ClipPreviewResult, IpcError> {
+    let db_load = state.db.clone();
+    let cid = clip_id.clone();
+    let (clip, project, vod) = blocking(move || {
+        let clip = get_clip(&db_load, &cid)?;
+        let project = get_project_summary(&db_load, &clip.project_id)?;
+        let vod = crate::store::projects::get_vod_by_project(&db_load, &clip.project_id)?;
+        Ok((clip, project, vod))
+    })
+    .await?;
+
+    if let Some(ref mp4) = clip.output_mp4_path {
+        let p = PathBuf::from(mp4);
+        if p.is_file() {
+            let preview_url = crate::preview::build_local_media_url(&p)?;
+            return Ok(ClipPreviewResult {
+                video_path: mp4.clone(),
+                preview_url,
+                offset_sec: clip.start_sec,
+                is_rendered: true,
+            });
+        }
+    }
+
+    let workspace_dir = PathBuf::from(&project.workspace_dir);
+    let meta_val: serde_json::Value =
+        serde_json::from_str(&vod.metadata_json).unwrap_or(serde_json::Value::Null);
+    let is_demo = meta_val.get("demo").and_then(|v| v.as_bool()).unwrap_or(false);
+    let audio_path_opt = vod.audio_path.as_deref().map(PathBuf::from);
+
+    if !is_demo && !vod.source_url.trim().is_empty() {
+        let clip_dur = (clip.end_sec - clip.start_sec).max(1.0);
+        if let Ok(fast_mp4) = crate::preview::build_fast_stream_preview_mp4(
+            &state.db,
+            &state.paths,
+            &workspace_dir,
+            &vod.source_url,
+            &clip.id,
+            clip.start_sec,
+            clip_dur,
+        )
+        .await
+        {
+            let preview_url = crate::preview::build_local_media_url(&fast_mp4)?;
+            return Ok(ClipPreviewResult {
+                video_path: fast_mp4.to_string_lossy().to_string(),
+                preview_url,
+                offset_sec: clip.start_sec,
+                is_rendered: false,
+            });
+        }
+    }
+
+    let (seg_path, seg_origin_sec) = render::ensure_clip_video_segment(
+        &app,
+        &state.db,
+        &state.paths,
+        &clip,
+        &workspace_dir,
+        &vod.source_url,
+        vod.duration_sec,
+        audio_path_opt.as_deref(),
+        is_demo,
+    )
+    .await?;
+
+    let trim_start = (clip.start_sec - seg_origin_sec).max(0.0);
+    let clip_dur = (clip.end_sec - clip.start_sec).max(1.0);
+
+    let (playable_path, final_offset) = match crate::preview::build_webview_preview_mp4(
+        &state.db,
+        &state.paths,
+        &seg_path,
+        &workspace_dir,
+        &clip.id,
+        trim_start,
+        clip_dur,
+    )
+    .await
+    {
+        Ok(wv_mp4) => (wv_mp4, clip.start_sec),
+        Err(_) => (seg_path, seg_origin_sec),
+    };
+
+    let preview_url = crate::preview::build_local_media_url(&playable_path)?;
+    Ok(ClipPreviewResult {
+        video_path: playable_path.to_string_lossy().to_string(),
+        preview_url,
+        offset_sec: final_offset,
+        is_rendered: false,
+    })
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+pub struct TikTokPublishPrep {
+    pub mp4_path: String,
+    pub caption_text: String,
+    pub studio_url: String,
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn open_tiktok_publish(
+    state: State<'_, AppState>,
+    clip_id: String,
+) -> Result<TikTokPublishPrep, IpcError> {
+    let db_load = state.db.clone();
+    let cid = clip_id.clone();
+    let clip = blocking(move || get_clip(&db_load, &cid)).await?;
+
+    let mp4_path = clip
+        .output_mp4_path
+        .as_deref()
+        .filter(|p| PathBuf::from(p).is_file())
+        .map(ToOwned::to_owned)
+        .ok_or_else(|| {
+            IpcError::new(
+                "MP4_NOT_EXPORTED",
+                "Ce clip n'est pas encore exporté en MP4.",
+            )
+        })?;
+
+    let caption_text = render::format_caption_txt(&clip);
+    let studio_url = "https://www.tiktok.com/tiktokstudio/upload".to_string();
+
+    let _ = render::reveal_path_in_explorer(&mp4_path);
+    #[cfg(target_os = "windows")]
+    {
+        let _ = std::process::Command::new("explorer")
+            .arg(&studio_url)
+            .spawn();
+    }
+
+    Ok(TikTokPublishPrep {
+        mp4_path,
+        caption_text,
+        studio_url,
+    })
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn tiktok_get_status() -> Result<crate::tiktok::TikTokStatus, IpcError> {
+    Ok(blocking(crate::tiktok::get_status).await?)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn tiktok_save_credentials(
+    input: crate::tiktok::TikTokCredentialsInput,
+) -> Result<crate::tiktok::TikTokStatus, IpcError> {
+    Ok(blocking(move || crate::tiktok::save_credentials(input)).await?)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn tiktok_connect_oauth() -> Result<crate::tiktok::TikTokStatus, IpcError> {
+    Ok(crate::tiktok::start_oauth_login().await?)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn tiktok_disconnect() -> Result<crate::tiktok::TikTokStatus, IpcError> {
+    Ok(blocking(crate::tiktok::disconnect).await?)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn tiktok_upload_clip(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    input: crate::tiktok::TikTokUploadInput,
+) -> Result<crate::tiktok::TikTokUploadResult, IpcError> {
+    let db_load = state.db.clone();
+    let cid = input.clip_id.clone();
+    let clip = blocking(move || get_clip(&db_load, &cid)).await?;
+
+    let mp4_path = match clip.output_mp4_path.as_deref().filter(|p| PathBuf::from(p).is_file()) {
+        Some(existing) => PathBuf::from(existing),
+        None => {
+            let cancel_flag = state.register_render_cancel(&input.clip_id);
+            let res = render::render_single_clip(
+                app.clone(),
+                state.db.clone(),
+                state.paths.clone(),
+                Arc::clone(&state.render_semaphore),
+                input.clip_id.clone(),
+                cancel_flag,
+            )
+            .await;
+            state.clear_render_cancel(&input.clip_id);
+            let rendered = res?;
+            PathBuf::from(rendered.mp4_path)
+        }
+    };
+
+    Ok(crate::tiktok::upload_mp4_to_tiktok(&mp4_path, &input).await?)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn tiktok_open_studio_window(app: AppHandle) -> Result<(), IpcError> {
+    if let Some(win) = app.get_webview_window("tiktok-studio") {
+        let _ = win.unminimize();
+        let _ = win.show();
+        let _ = win.set_focus();
+        return Ok(());
+    }
+    let url = tauri::Url::parse("https://www.tiktok.com/tiktokstudio/upload")
+        .map_err(|e| IpcError::new("URL_ERROR", e.to_string()))?;
+    tauri::WebviewWindowBuilder::new(&app, "tiktok-studio", tauri::WebviewUrl::External(url))
+        .title("ClipForge — Compte TikTok lié")
+        .inner_size(1160.0, 820.0)
+        .center()
+        .build()
+        .map_err(|e| IpcError::new("WINDOW_ERROR", format!("Impossible d'ouvrir TikTok intégré : {e}")))?;
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn tiktok_prepare_studio_upload(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    clip_id: String,
+) -> Result<TikTokPublishPrep, IpcError> {
+    let db_load = state.db.clone();
+    let cid = clip_id.clone();
+    let clip = blocking(move || get_clip(&db_load, &cid)).await?;
+
+    let mp4_path = match clip.output_mp4_path.as_deref().filter(|p| PathBuf::from(p).is_file()) {
+        Some(existing) => existing.to_string(),
+        None => {
+            let cancel_flag = state.register_render_cancel(&clip_id);
+            let res = render::render_single_clip(
+                app.clone(),
+                state.db.clone(),
+                state.paths.clone(),
+                Arc::clone(&state.render_semaphore),
+                clip_id.clone(),
+                cancel_flag,
+            )
+            .await;
+            state.clear_render_cancel(&clip_id);
+            res?.mp4_path
+        }
+    };
+
+    let caption_text = render::format_caption_txt(&clip);
+    let studio_url = "https://www.tiktok.com/tiktokstudio/upload".to_string();
+
+    tiktok_open_studio_window(app).await?;
+    let _ = render::reveal_path_in_explorer(&mp4_path);
+
+    Ok(TikTokPublishPrep {
+        mp4_path,
+        caption_text,
+        studio_url,
+    })
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn tiktok_suggest_copy(
+    state: State<'_, AppState>,
+    clip_id: String,
+) -> Result<crate::tiktok::studio::TikTokAiSuggestion, IpcError> {
+    let api_key = stored_api_key().await?;
+    let db = state.db.clone();
+    let paths = state.paths.clone();
+    let cid = clip_id.clone();
+
+    let (clip, project, profile, pricing, mut selection) = blocking(move || {
+        let clip = get_clip(&db, &cid)?;
+        let project = get_project_summary(&db, &clip.project_id)?;
+        let profile = match project.streamer_profile_id.as_deref() {
+            Some(pid) => get_streamer_profile(&db, pid)?,
+            None => None,
+        };
+        let pricing = load_pricing_config(&paths);
+        let selection = gemini_client::load_model_selection(&db).unwrap_or_default();
+        Ok((clip, project, profile, pricing, selection))
+    })
+    .await?;
+
+    if selection.stage_b_model.is_none() {
+        let live = gemini_client::list_models(&api_key).await?;
+        let usable: Vec<String> = live
+            .into_iter()
+            .filter(|m| m.supports_generate_content)
+            .map(|m| m.id)
+            .collect();
+        selection.stage_b_model = usable
+            .iter()
+            .find(|id| id.contains("flash") && !id.contains("lite"))
+            .or_else(|| usable.iter().find(|id| id.contains("flash")))
+            .or_else(|| usable.first())
+            .cloned();
+    }
+
+    let model_id = selection
+        .stage_b_model
+        .or(selection.stage_a_model)
+        .ok_or_else(|| IpcError::new("CONFIG_ERROR", "Aucun modèle Gemini disponible dans Paramètres."))?;
+
+    Ok(crate::tiktok::studio::suggest_tiktok_post_copy(
+        &state.db,
+        &state.gemini_limiter,
+        &pricing,
+        &api_key,
+        &project.id,
+        &model_id,
+        profile.as_ref(),
+        &clip,
+    )
+    .await?)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn tiktok_auto_inject_upload(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    clip_id: String,
+    caption_text: String,
+    auto_publish: bool,
+) -> Result<crate::tiktok::studio::TikTokAutoInjectResult, IpcError> {
+    let db_load = state.db.clone();
+    let cid = clip_id.clone();
+    let clip = blocking(move || get_clip(&db_load, &cid)).await?;
+
+    let mp4_path = match clip.output_mp4_path.as_deref().filter(|p| PathBuf::from(p).is_file()) {
+        Some(existing) => PathBuf::from(existing),
+        None => {
+            let cancel_flag = state.register_render_cancel(&clip_id);
+            let res = render::render_single_clip(
+                app.clone(),
+                state.db.clone(),
+                state.paths.clone(),
+                Arc::clone(&state.render_semaphore),
+                clip_id.clone(),
+                cancel_flag,
+            )
+            .await;
+            state.clear_render_cancel(&clip_id);
+            PathBuf::from(res?.mp4_path)
+        }
+    };
+
+    Ok(crate::tiktok::studio::inject_clip_into_studio_window(
+        &app,
+        &mp4_path,
+        &caption_text,
+        auto_publish,
+    )
+    .await?)
+}
+
 async fn stored_api_key() -> Result<String, IpcError> {
     blocking(gemini_keyring::load_api_key)
         .await?

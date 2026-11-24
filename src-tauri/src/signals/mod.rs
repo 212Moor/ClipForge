@@ -67,7 +67,7 @@ pub fn load_chat_messages(chat_path: &Path) -> AppResult<Vec<ChatMessageLite>> {
     if !chat_path.is_file() {
         return Ok(Vec::new());
     }
-    let raw = fs::read_to_string(chat_path)?;
+    let raw_bytes = fs::read(chat_path)?; let raw = String::from_utf8_lossy(&raw_bytes).trim_start_matches('\u{feff}').to_string();
     let val: serde_json::Value = serde_json::from_str(&raw)?;
     let Some(comments) = val.get("comments").and_then(|c| c.as_array()) else {
         return Ok(Vec::new());
